@@ -118,6 +118,17 @@ export function PhasePageClient({ hasJourney, current, timeline, nextPhaseTitle,
   const fcLabel = fc ? (fc.status === "completed" ? "Completed" : current.milestones.some((m) => m.is_final_challenge && m.status === "completed") ? "Completed" : "Locked") : "Locked"
   const fcLocked = fcLabel !== "Completed"
 
+  // Display-only completion lines for default journey slugs; personalized phases fall back gracefully
+  const COMPLETION_TAGLINES: Record<string, string> = {
+    foundation: "You built the foundation.",
+    discipline: "You forged your discipline.",
+    growth: "You grew beyond your limits.",
+    mastery: "You sharpened your craft.",
+    expansion: "You expanded what's possible.",
+    legacy: "Your legacy has begun.",
+  }
+  const tagline = (current.slug ? COMPLETION_TAGLINES[current.slug] : undefined) ?? current.objective ?? "A chapter closed."
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -229,9 +240,12 @@ export function PhasePageClient({ hasJourney, current, timeline, nextPhaseTitle,
       </div>
 
       <PhaseCompleteDialog
+        key={current.id}
         open={completeOpen}
         onOpenChange={setCompleteOpen}
+        phaseId={current.id}
         phaseTitle={current.title}
+        tagline={tagline}
         xp={earnedXp || current.earnedXp}
         done={current.completedMilestones}
         total={current.totalMilestones}

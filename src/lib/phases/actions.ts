@@ -256,6 +256,35 @@ export async function beginNextPhase(phaseId: string): Promise<void> {
   revalidatePath("/dashboard")
 }
 
+/**
+ * Save a reflection for a completed phase.
+ * One reflection per user per phase (upsert semantics via app-level check).
+ */
+export async function savePhaseReflection(phaseId: string, body: string): Promise<void> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const userId = mustUserId(user ?? null)
+
+  const text = body.trim()
+  if (text.length < 1 || text.length > 5000) throw new Error("Reflection must be between 1 and 5000 characters")
+
+  // Verify ownership of the phase
+  const { data: phase } = await supabase.from("phases").select("id").eq("id", phaseId).eq("user_id", userId).single()
+  if (!phase) throw new Error("Phase not found")
+
+  // Idempotent: replace existing reflection for this phase
+  const { data: existing } = await supabase.from("reflections").select("id").eq("user_id", userId).eq("phase_id", phaseId).limit(1)
+  if (existing && existing.length > 0) {
+    const { error: updErr } = await supabase.from("reflections").update({ body: text }).eq("id", existing[0].id).eq("user_id", userId)
+    if (updErr) throw new Error(updErr.message)
+  } else {
+    const { error: insErr } = await supabase.from("reflections").insert({ user_id: userId, phase_id: phaseId, body: text })
+    if (insErr) throw new Error(insErr.message)
+  }
+}
+
 /** Toggle milestone completed/pending (for demo/progression), enforces ownership via phase */
 export async function toggleMilestone(milestoneId: string): Promise<void> {
   const supabase = await createClient()
