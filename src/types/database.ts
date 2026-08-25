@@ -3,6 +3,23 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type Difficulty = "easy" | "standard" | "hard" | "extreme"
 export type PhaseStatus = "locked" | "available" | "active" | "completed" | "archived"
 
+export type QuestStatus = "active" | "completed" | "archived"
+export type QuestDifficulty = "easy" | "medium" | "hard" | "challenge"
+export type QuestCategory = "intellect" | "physical" | "discipline" | "reflection" | "craft" | "work" | "general"
+export type Recurrence = "none" | "daily" | "weekly"
+
+export type CompleteQuestResult = {
+  ok: boolean
+  error?: string
+  already_completed?: boolean
+  xp_awarded?: number
+  xp_total?: number
+  level?: number
+  xp_to_next?: number
+  milestone_updated?: boolean
+  streak?: number | null
+}
+
 export type FinalChallengeJson = {
   title: string
   description: string
@@ -184,6 +201,117 @@ export type Database = {
           created_at?: string
           updated_at?: string
         }
+      }
+      quests: {
+        Row: {
+          id: string
+          user_id: string
+          milestone_id: string | null
+          phase_id: string | null
+          title: string
+          description: string | null
+          xp_reward: number
+          sort_order: number
+          is_recurring: boolean
+          status: QuestStatus
+          category: QuestCategory
+          difficulty: QuestDifficulty
+          estimated_duration: number | null
+          due_date: string | null
+          recurrence: Recurrence
+          linked_skill: string | null
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          milestone_id?: string | null
+          phase_id?: string | null
+          title: string
+          description?: string | null
+          xp_reward?: number
+          sort_order?: number
+          is_recurring?: boolean
+          status?: QuestStatus
+          category?: QuestCategory
+          difficulty?: QuestDifficulty
+          estimated_duration?: number | null
+          due_date?: string | null
+          recurrence?: Recurrence
+          linked_skill?: string | null
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          milestone_id?: string | null
+          phase_id?: string | null
+          title?: string
+          description?: string | null
+          xp_reward?: number
+          sort_order?: number
+          is_recurring?: boolean
+          status?: QuestStatus
+          category?: QuestCategory
+          difficulty?: QuestDifficulty
+          estimated_duration?: number | null
+          due_date?: string | null
+          recurrence?: Recurrence
+          linked_skill?: string | null
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      xp_transactions: {
+        Row: {
+          id: string
+          user_id: string
+          amount: number
+          source: string
+          source_type: "quest" | "milestone" | "phase" | "bonus" | "adjustment" | null
+          source_id: string | null
+          source_key: string | null
+          quest_id: string | null
+          skill_id: string | null
+          description: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          amount: number
+          source: string
+          source_type?: "quest" | "milestone" | "phase" | "bonus" | "adjustment" | null
+          source_id?: string | null
+          source_key?: string | null
+          quest_id?: string | null
+          skill_id?: string | null
+          description?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          amount?: number
+          source?: string
+          source_type?: "quest" | "milestone" | "phase" | "bonus" | "adjustment" | null
+          source_id?: string | null
+          source_key?: string | null
+          quest_id?: string | null
+          skill_id?: string | null
+          description?: string | null
+          created_at?: string
+        }
+      }
+      user_levels: {
+        Row: { id: string; user_id: string; level: number; xp: number; created_at: string; updated_at: string }
+        Insert: { id?: string; user_id: string; level?: number; xp?: number; created_at?: string; updated_at?: string }
+        Update: { id?: string; user_id?: string; level?: number; xp?: number; created_at?: string; updated_at?: string }
       }
       // remaining tables loosely typed
       [key: string]: { Row: Record<string, unknown>; Insert: Record<string, unknown>; Update: Record<string, unknown> }

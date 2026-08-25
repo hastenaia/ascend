@@ -134,10 +134,49 @@ export async function initializeJourney(): Promise<{ created: boolean; message: 
   }
 
   if (milestoneRows.length > 0) {
-    const { error: mErr } = await supabase.from("milestones").insert(milestoneRows)
+    const { data: insertedMilestones, error: mErr } = await supabase
+      .from("milestones")
+      .insert(milestoneRows)
+      .select("id, title, phase_id")
     if (mErr) {
       // Non-fatal: phases already created. Log but don't revert.
       console.error("[initializeJourney] milestones insert failed", mErr.message)
+    } else {
+      // Seed Foundation starter quests linked to their milestones (only on fresh journey)
+      const msRows = (insertedMilestones as { id: string; title: string; phase_id: string }[]) ?? []
+      const foundationPhaseId = phasesForMilestones.find((p) => p.order_index === 1)?.id ?? null
+      if (foundationPhaseId) {
+        const byTitle = new Map(msRows.filter((m) => m.phase_id === foundationPhaseId).map((m) => [m.title, m.id]))
+        const starterQuests = [
+          { title: "Write tomorrow's top 3 priorities", category: "discipline", difficulty: "easy", xp_reward: 15, estimated_duration: 5, recurrence: "daily", milestone: "Create a basic routine" },
+          { title: "Study programming for 30 minutes", category: "intellect", difficulty: "medium", xp_reward: 30, estimated_duration: 30, recurrence: "daily", milestone: "Complete learning sessions" },
+          { title: "Read for 20 minutes", category: "intellect", difficulty: "easy", xp_reward: 15, estimated_duration: 20, recurrence: "daily", milestone: "Complete learning sessions" },
+          { title: "Practice one programming problem", category: "craft", difficulty: "medium", xp_reward: 40, estimated_duration: 15, recurrence: "daily", milestone: "Complete learning sessions" },
+          { title: "Complete a 20-minute workout", category: "physical", difficulty: "medium", xp_reward: 30, estimated_duration: 20, recurrence: "daily", milestone: "Complete physical activities" },
+          { title: "Complete one difficult task", category: "discipline", difficulty: "hard", xp_reward: 75, estimated_duration: null as number | null, recurrence: "none", milestone: "Build momentum" },
+          { title: "Evening reflection: what went well?", category: "reflection", difficulty: "easy", xp_reward: 10, estimated_duration: 5, recurrence: "daily", milestone: "Complete reflection" },
+        ]
+        const questInserts = starterQuests
+          .map((q) => ({
+            user_id: userId,
+            phase_id: foundationPhaseId,
+            milestone_id: byTitle.get(q.milestone) ?? null,
+            title: q.title,
+            description: null,
+            category: q.category,
+            difficulty: q.difficulty,
+            xp_reward: q.xp_reward,
+            estimated_duration: q.estimated_duration,
+            recurrence: q.recurrence,
+            is_recurring: q.recurrence !== "none",
+            status: "active",
+          }))
+          .filter((q) => q.milestone_id !== null)
+        if (questInserts.length > 0) {
+          const { error: qErr } = await supabase.from("quests").insert(questInserts)
+          if (qErr) console.error("[initializeJourney] starter quests insert failed", qErr.message)
+        }
+      }
     }
   }
 
