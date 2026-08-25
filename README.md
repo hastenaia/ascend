@@ -26,7 +26,7 @@ The real Ascend application requires a server (Next.js SSR, Supabase Auth, middl
 
 **Source:** `hastenaia/ascend` · **Branch:** `main` · **Framework:** `Next.js`
 
-`netlify.toml` is preserved (publish `.next` + `@netlify/plugin-nextjs`). **Actual live host verified is Vercel** `ascend-q3pvbcks0-tigididing.vercel.app` — Netlify site not discoverable via GitHub deployments API or common subdomains (`hastenaia-ascend.netlify.app` 404).
+`netlify.toml` is now minimal (`command="next build"` only — Netlify auto-detects Next.js 16 Runtime, no `publish`/`plugins` needed). **Actual live host verified is Vercel** `ascend-q3pvbcks0-tigididing.vercel.app` — Netlify is secondary/backup.
 
 **For Netlify (if you deploy there):**
 1. Netlify → Add new site → Import `hastenaia/ascend` → Build `next build`.
