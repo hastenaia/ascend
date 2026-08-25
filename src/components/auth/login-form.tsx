@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 import { loginSchema, type LoginValues } from "@/lib/validations/auth"
+import { mapAuthError } from "@/lib/supabase/auth-errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -16,7 +17,8 @@ export function LoginForm() {
   const router = useRouter()
   const sp = useSearchParams()
   const next = sp.get("next") || "/dashboard"
-  const [serverError, setServerError] = React.useState<string | null>(null)
+  const oauthError = sp.get("error") || sp.get("error_description")
+  const [serverError, setServerError] = React.useState<string | null>(oauthError ? mapAuthError(oauthError) : null)
 
   const form = useForm<LoginValues>({ resolver: zodResolver(loginSchema), defaultValues: { email: "", password: "" } })
 
@@ -36,7 +38,8 @@ export function LoginForm() {
       router.push(next)
       router.refresh()
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Sign in failed"
+      const raw = e instanceof Error ? e.message : "Sign in failed"
+      const msg = mapAuthError(raw)
       setServerError(msg)
       toast.error(msg)
     }

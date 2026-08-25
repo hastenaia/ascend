@@ -1,6 +1,7 @@
 "use client"
 import * as React from "react"
 import { createClient } from "@/lib/supabase/client"
+import { mapAuthError } from "@/lib/supabase/auth-errors"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 
@@ -23,8 +24,8 @@ export function GoogleButton({ next = "/dashboard", disabledReason }: { next?: s
       })
       if (error) throw error
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Google sign-in failed"
-      toast.error(msg)
+      const raw = e instanceof Error ? e.message : "Google sign-in failed"
+      toast.error(mapAuthError(raw))
       setLoading(false)
     }
   }

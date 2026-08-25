@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 import { signUpSchema, type SignUpValues } from "@/lib/validations/auth"
+import { mapAuthError } from "@/lib/supabase/auth-errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -19,7 +20,7 @@ export function SignUpForm() {
 
   const form = useForm<SignUpValues>({
     resolver: zodResolver(signUpSchema),
-    defaultValues: { email: "", password: "", confirmPassword: "" },
+    defaultValues: { email: "", password: "", confirmPassword: "", displayName: "" },
   })
 
   const {
@@ -50,7 +51,8 @@ export function SignUpForm() {
       router.push("/dashboard")
       router.refresh()
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Sign up failed"
+      const raw = e instanceof Error ? e.message : "Sign up failed"
+      const msg = mapAuthError(raw)
       setServerError(msg)
       toast.error(msg)
     }
@@ -80,6 +82,11 @@ export function SignUpForm() {
       </CardHeader>
       <CardContent className="space-y-5">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="displayName">Display name <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Input id="displayName" placeholder="Ralph" autoComplete="name" {...register("displayName")} />
+            {errors.displayName ? <p className="text-xs text-destructive">{errors.displayName.message}</p> : null}
+          </div>
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input id="email" type="email" placeholder="you@example.com" autoComplete="email" {...register("email")} />
