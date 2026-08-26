@@ -32,12 +32,6 @@ function startOfMonthIso(d = new Date()): string {
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString()
 }
 
-function weeksAgoIso(weeks: number, d = new Date()): string {
-  const dt = new Date(d)
-  dt.setDate(dt.getDate() - weeks * 7)
-  return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).toISOString()
-}
-
 /** All 8 stats with real persisted values + monthly delta + weekly trend */
 export async function getStatsOverview(supabase: SupabaseClient): Promise<StatSummary[]> {
   const [{ data: catalog }, { data: userStats }] = await Promise.all([
@@ -57,7 +51,6 @@ export async function getStatsOverview(supabase: SupabaseClient): Promise<StatSu
     .from("stat_history")
     .select("stat_id, delta, created_at")
     .in("stat_id", rows.map((r) => r.id))
-    .gte("created_at", weeksAgoIso(9))
   const history = (hist as { stat_id: string; delta: number; created_at: string }[]) ?? []
 
   const monthStart = startOfMonthIso()

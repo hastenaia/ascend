@@ -21,18 +21,22 @@ export function clampXpForDifficulty(difficulty: QuestDifficultyValue, xp: numbe
 
 const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD")
 
+// Forms submit "" for cleared selects/date inputs and NaN for cleared numbers
+const emptyToNull = (v: unknown) => (typeof v === "string" && v.trim() === "" ? null : v)
+const nanToNull = (v: unknown) => (typeof v === "number" && Number.isNaN(v) ? null : v)
+
 export const createQuestSchema = z.object({
   title: z.string().min(1).max(150),
   description: z.string().max(500).optional().nullable(),
   category: z.enum(QUEST_CATEGORIES).default("general"),
   difficulty: z.enum(QUEST_DIFFICULTIES).default("medium"),
   xp_reward: z.number().int().min(5).max(500),
-  estimated_duration: z.number().int().min(5).max(480).optional().nullable(),
-  due_date: dateString.optional().nullable(),
+  estimated_duration: z.preprocess(nanToNull, z.number().int().min(5).max(480).nullable()),
+  due_date: z.preprocess(emptyToNull, dateString.nullable()),
   recurrence: z.enum(RECURRENCES).default("none"),
-  phase_id: z.string().uuid().optional().nullable(),
-  milestone_id: z.string().uuid().optional().nullable(),
-  linked_skill: z.string().uuid().optional().nullable(),
+  phase_id: z.preprocess(emptyToNull, z.string().uuid().nullable()),
+  milestone_id: z.preprocess(emptyToNull, z.string().uuid().nullable()),
+  linked_skill: z.preprocess(emptyToNull, z.string().uuid().nullable()),
 })
 
 export type CreateQuestInput = z.infer<typeof createQuestSchema>

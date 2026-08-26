@@ -69,11 +69,7 @@ export function SkillsClient({ tree }: { tree: SkillTreeData }) {
                 {cat.branches.map(({ branch, leaves }) => (
                   <div key={branch.skill.id}>
                     {/* Branch row */}
-                    <button
-                      type="button"
-                      onClick={() => select(branch, cat.slug)}
-                      className="group flex w-full items-center gap-3 text-left"
-                    >
+                    <div className="flex w-full items-center gap-3 text-left">
                       <SkillNode node={branch} onSelect={() => select(branch, cat.slug)} />
                       <div className="min-w-0 flex-1">
                         <p className={cn("truncate text-sm font-semibold", nodeText[branch.state])}>{branch.skill.name}</p>
@@ -81,17 +77,13 @@ export function SkillsClient({ tree }: { tree: SkillTreeData }) {
                           {leaves.filter((l) => l.state === "unlocked").length}/{leaves.length} skills
                         </p>
                       </div>
-                    </button>
+                    </div>
 
                     {/* Leaves hanging off the branch rail */}
                     <ul className="ml-[19px] mt-2 space-y-2 border-l border-border/70 pl-4">
                       {leaves.map((leaf) => (
                         <li key={leaf.skill.id}>
-                          <button
-                            type="button"
-                            onClick={() => select(leaf, cat.slug)}
-                            className="group flex w-full items-center gap-3 rounded-lg px-1 py-1 text-left transition-colors hover:bg-muted/40"
-                          >
+                          <div className="flex w-full items-center gap-3 rounded-lg px-1 py-1 text-left transition-colors hover:bg-muted/40">
                             <SkillNode node={leaf} onSelect={() => select(leaf, cat.slug)} />
                             <div className="min-w-0 flex-1">
                               <p className={cn("truncate text-[13px] font-medium", nodeText[leaf.state])}>{leaf.skill.name}</p>
@@ -99,7 +91,7 @@ export function SkillsClient({ tree }: { tree: SkillTreeData }) {
                                 <p className="font-mono text-[10px] text-muted-foreground">{leaf.xp}/{leaf.skill.unlock_xp} XP</p>
                               )}
                             </div>
-                          </button>
+                          </div>
                         </li>
                       ))}
                     </ul>
