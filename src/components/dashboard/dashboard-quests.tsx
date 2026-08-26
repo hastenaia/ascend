@@ -2,11 +2,13 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { motion } from "framer-motion"
 import { Check, ScrollText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/feedback/empty-state"
 import { QuestCompletionAnimation } from "@/components/quests/quest-completion-animation"
 import { completeQuestAction } from "@/lib/quests/actions"
+import { categoryIcon } from "@/lib/icons"
 import type { QuestRow } from "@/lib/quests/queries"
 
 export function DashboardQuests({ quests }: { quests: QuestRow[] }) {
@@ -44,22 +46,28 @@ export function DashboardQuests({ quests }: { quests: QuestRow[] }) {
         <div className="space-y-2">
           {quests.slice(0, 6).map((q) => {
             const busy = busyId === q.id
+            const Icon = categoryIcon(q.category)
             return (
-              <div key={q.id} className="flex items-center justify-between gap-3 rounded-xl border bg-card p-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{q.title}</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    <span className="capitalize">{q.category}</span> · <span className="capitalize">{q.difficulty}</span>
-                    {q.estimated_duration ? ` · ${q.estimated_duration}m` : ""}
-                  </p>
+              <motion.div key={q.id} layout className="group flex items-center justify-between gap-3 rounded-xl border bg-card p-3 transition-colors hover:border-primary/25">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg ascend-gradient text-primary ring-1 ring-primary/20">
+                    <Icon className="size-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{q.title}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      <span className="font-medium capitalize">{q.difficulty}</span>
+                      {q.estimated_duration ? ` · ${q.estimated_duration} min` : ""}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <span className="font-mono text-xs font-semibold text-primary">+{q.xp_reward}</span>
-                  <Button size="icon" variant="outline" className="size-8 rounded-full" disabled={busy} onClick={() => handleComplete(q)} aria-label={`Complete ${q.title}`}>
-                    {busy ? <span className="size-3 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" /> : <Check className="size-3.5" />}
+                <div className="relative flex shrink-0 items-center gap-2">
+                  <span className="stat-num font-mono text-xs font-bold text-primary">+{q.xp_reward}</span>
+                  <Button size="icon" variant="outline" className="size-9 rounded-full transition-transform active:scale-90" disabled={busy} onClick={() => handleComplete(q)} aria-label={`Complete ${q.title}`}>
+                    {busy ? <span className="size-3 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" /> : <Check className="size-4" />}
                   </Button>
                 </div>
-              </div>
+              </motion.div>
             )
           })}
         </div>

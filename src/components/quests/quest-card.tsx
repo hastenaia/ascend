@@ -4,6 +4,7 @@ import { Clock, Calendar, Repeat, Check, Zap } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { categoryIcon } from "@/lib/icons"
 import type { QuestRow } from "@/lib/quests/queries"
 
 export const difficultyStyles: Record<string, string> = {
@@ -34,6 +35,7 @@ export function QuestCard({ quest, onOpen, onComplete, busy, index = 0 }: Props)
   const done = quest.status === "completed"
   const dueLabel = formatDueLabel(quest.due_date)
   const overdue = dueLabel?.startsWith("Overdue")
+  const CategoryIcon = categoryIcon(quest.category)
 
   return (
     <motion.div
@@ -47,7 +49,7 @@ export function QuestCard({ quest, onOpen, onComplete, busy, index = 0 }: Props)
       <Card
         className={cn(
           "group cursor-pointer overflow-hidden transition-colors",
-          done ? "border-emerald-200/50 bg-emerald-50/40 dark:border-emerald-900/40 dark:bg-emerald-950/20" : "hover:border-primary/25"
+          done ? "border-emerald-200/50 bg-emerald-50/40 dark:border-emerald-900/40 dark:bg-emerald-950/20" : "hover:border-primary/25 hover:shadow-[0_10px_30px_-14px_hsl(252_60%_50%/0.25)]"
         )}
         onClick={() => onOpen?.(quest)}
       >
@@ -61,13 +63,19 @@ export function QuestCard({ quest, onOpen, onComplete, busy, index = 0 }: Props)
               if (!done) onComplete?.(quest)
             }}
             className={cn(
-              "flex size-8 shrink-0 items-center justify-center rounded-full border transition-all",
+              "flex size-8 shrink-0 items-center justify-center rounded-full border transition-all active:scale-90",
               done ? "border-emerald-500 bg-emerald-500 text-white" : "border-border bg-card hover:border-primary hover:bg-primary/10",
               busy && !done && "animate-pulse"
             )}
           >
             {done && <Check className="size-4" />}
           </button>
+
+          {!done && (
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg ascend-gradient text-primary ring-1 ring-primary/20">
+              <CategoryIcon className="size-4" />
+            </span>
+          )}
 
           <div className="min-w-0 flex-1">
             <p className={cn("truncate text-sm font-medium", done && "text-muted-foreground line-through")}>{quest.title}</p>

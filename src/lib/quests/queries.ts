@@ -149,11 +149,13 @@ export async function getQuestsPageData(supabase: SupabaseClient, userId: string
 
 export async function getDashboardData(supabase: SupabaseClient, userId: string) {
   const today = todayDateString()
-  const [todays, level, momentum, recentMilestones] = await Promise.all([
+  const [todays, level, momentum, recentMilestones, categoryXp, trend] = await Promise.all([
     getTodaysQuests(supabase, userId),
     getLevelSummary(supabase),
     getMomentumRow(supabase, userId, today),
     getRecentCompletedMilestones(supabase, userId, 3),
+    getCategoryXp(supabase),
+    getMomentumTrend(supabase),
   ])
 
   let current: PhaseWithProgress | null = null
@@ -168,6 +170,49 @@ export async function getDashboardData(supabase: SupabaseClient, userId: string)
     xpToday: level.xpToday,
     level,
     momentum,
+    trend,
     recentMilestones,
+    categoryXp,
   }
+}
+
+/** Lifetime XP per quest category (drives character attributes from real activity) */
+export async function getCategoryXp(supabase: SupabaseClient): Promise<Record<string, number>> {
+  const [{ data: txs }, { data: quests }] = await Promise.all([
+    supabase.from("xp_transactions").select("amount, quest_id").eq("source_type", "quest"),
+    supabase.from("quests").select("id, category"),
+  ])
+  const categoryById = new Map((((quests as { id: string; category: string }[]) ?? [])).map((q) => [q.id, q.category]))
+  const out: Record<string, number> = {}
+  for (const t of ((txs as { amount: number; quest_id: string | null }[]) ?? [])) {
+    if (!t.quest_id) continue
+    const cat = categoryById.get(t.quest_id) ?? "general"
+    out[cat] = (out[cat] ?? 0) + t.amount
+  }
+  return out
+}
+
+/** Momentum score: current week-to-date vs previous full week */
+export async function getMomentumTrend(supabase: SupabaseClient): Promise<{ thisWeek: number; prevWeek: number }> {
+  const since = new Date()
+  since.setDate(since.getDate() - 13)
+  const sinceStr = `${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, "0")}-${String(since.getDate()).padStart(2, "0")}`
+  const { data } = await supabase.from("momentum").select("date, score").gte("date", sinceStr)
+  const rows = ((data as { date: string; score: number }[]) ?? []).sort((a, b) => a.date.localeCompare(b.date))
+  const now = new Date()
+  let thisWeek = 0
+  let prevWeek = 0
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(now)
+    d.setDate(now.getDate() - i)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+    thisWeek += rows.find((r) => r.date === key)?.score ?? 0
+  }
+  for (let i = 7; i < 14; i++) {
+    const d = new Date(now)
+    d.setDate(now.getDate() - i)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+    prevWeek += rows.find((r) => r.date === key)?.score ?? 0
+  }
+  return { thisWeek, prevWeek }
 }

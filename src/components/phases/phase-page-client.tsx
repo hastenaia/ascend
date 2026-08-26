@@ -139,8 +139,11 @@ export function PhasePageClient({ hasJourney, current, timeline, nextPhaseTitle,
       </div>
 
       {/* Hero card */}
-      <Card className="overflow-hidden">
+      <Card className="sheen glow-primary relative overflow-hidden border-primary/25">
         <div className="h-1 w-full ascend-gradient-strong" />
+        <div aria-hidden className="pointer-events-none absolute -right-8 -top-10 select-none text-[9rem] font-black leading-none text-primary/[0.05] stat-num">
+          {String(current.phase_number ?? current.order_index ?? 1).padStart(2, "0")}
+        </div>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-2">
             <CardTitle className="flex items-center gap-2 text-base">
@@ -156,12 +159,12 @@ export function PhasePageClient({ hasJourney, current, timeline, nextPhaseTitle,
           <div className="grid gap-3 sm:grid-cols-3 text-sm">
             <div className="rounded-xl border bg-muted/30 p-3">
               <p className="text-xs text-muted-foreground">Progress</p>
-              <p className="text-lg font-bold">{current.progress}%</p>
-              <Progress value={current.progress} className="mt-2 h-1.5" />
+              <p className="stat-num text-lg font-bold text-gradient">{current.progress}%</p>
+              <Progress value={current.progress} className="mt-2 h-1.5 shimmer" />
             </div>
             <div className="rounded-xl border bg-muted/30 p-3">
               <p className="text-xs text-muted-foreground">Milestones</p>
-              <p className="text-lg font-bold">
+              <p className="stat-num text-lg font-bold">
                 {current.completedMilestones} / {current.totalMilestones}
               </p>
               <p className="text-xs text-muted-foreground">completed</p>
