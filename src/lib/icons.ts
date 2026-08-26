@@ -1,4 +1,4 @@
-import { Brain, HeartPulse, BookOpen, MessagesSquare, ShieldCheck, GraduationCap, Users, Briefcase, Sparkles, type LucideIcon } from "lucide-react"
+import { Brain, HeartPulse, BookOpen, MessagesSquare, ShieldCheck, GraduationCap, Briefcase, Sparkles, type LucideIcon } from "lucide-react"
 
 /** Quest categories → icon */
 export const CATEGORY_ICONS: Record<string, LucideIcon> = {

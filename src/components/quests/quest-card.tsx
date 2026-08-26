@@ -4,7 +4,7 @@ import { Clock, Calendar, Repeat, Check, Zap } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { categoryIcon } from "@/lib/icons"
+import { CATEGORY_ICONS } from "@/lib/icons"
 import type { QuestRow } from "@/lib/quests/queries"
 
 export const difficultyStyles: Record<string, string> = {
@@ -35,7 +35,7 @@ export function QuestCard({ quest, onOpen, onComplete, busy, index = 0 }: Props)
   const done = quest.status === "completed"
   const dueLabel = formatDueLabel(quest.due_date)
   const overdue = dueLabel?.startsWith("Overdue")
-  const CategoryIcon = categoryIcon(quest.category)
+  const CategoryIcon = CATEGORY_ICONS[quest.category] ?? CATEGORY_ICONS.general
 
   return (
     <motion.div

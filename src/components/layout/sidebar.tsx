@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
 
-type LevelChip = { level: number; progressPct: number; xpToNext: number } | null
+export type LevelChip = { level: number; progressPct: number; xpToNext: number } | null
 
 const GROUP_ORDER: NavGroup[] = ["overview", "progression", "development", "system"]
 

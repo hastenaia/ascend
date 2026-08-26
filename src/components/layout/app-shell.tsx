@@ -43,7 +43,7 @@ export function AppShell({
 
   return (
     <div className="ambient-bg flex min-h-screen">
-      <Sidebar onSignOut={handleSignOut} userEmail={userEmail} level={level} />
+      <Sidebar onSignOut={handleSignOut} userEmail={displayName ?? userEmail} level={level} />
       <div className="flex min-w-0 flex-1 flex-col">
         <MobileHeader onSignOut={handleSignOut} userEmail={userEmail} level={level} />
         <Topbar />
