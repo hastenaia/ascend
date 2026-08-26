@@ -38,6 +38,8 @@ const ACHIEVEMENT_TARGETS: Record<string, number> = {
   ascending: 3,
 }
 
+const KNOWN_SLUGS = Object.keys(ACHIEVEMENT_TARGETS)
+
 function signalFor(slug: string, s: AchievementSignals): number {
   switch (slug) {
     case "first-step":
@@ -91,7 +93,7 @@ export async function getAchievementsOverview(
   userId: string
 ): Promise<{ views: AchievementView[]; signals: AchievementSignals }> {
   const [defsRes, unlocksRes, signals] = await Promise.all([
-    supabase.from("achievements").select("*").order("sort_order"),
+    supabase.from("achievements").select("*").in("slug", KNOWN_SLUGS).order("sort_order"),
     supabase.from("user_achievements").select("achievement_id,unlocked_at").eq("user_id", userId),
     fetchSignals(supabase, userId),
   ])

@@ -59,6 +59,18 @@ begin
 end $$;
 
 -- =====================================================
+-- Align legacy achievements scaffold (pre-existing table with only
+-- id/slug/name/description/created_at) to the Phase 6 schema.
+-- add column if not exists fills existing rows via defaults; the unique
+-- slug index is required by the ON CONFLICT upsert below.
+-- =====================================================
+alter table public.achievements add column if not exists flavor text not null default '';
+alter table public.achievements add column if not exists icon_key text not null default 'trophy';
+alter table public.achievements add column if not exists xp_reward int not null default 50;
+alter table public.achievements add column if not exists sort_order int not null default 0;
+create unique index if not exists achievements_slug_key on public.achievements(slug);
+
+-- =====================================================
 -- Seed catalog (exactly the six spec achievements)
 -- =====================================================
 insert into public.achievements (slug, name, description, flavor, icon_key, xp_reward, sort_order) values
