@@ -17,14 +17,16 @@ export default function AnalyticsPage() {
           title="No data to analyze yet"
           description="Complete quests and phases to see trends, streaks, and skill growth over time. No fake charts here."
         />
-        <div className="grid gap-4 sm:grid-cols-3">
-          {["Momentum","Consistency","XP Velocity"].map((k) => (
-            <div key={k} className="rounded-2xl border bg-card p-5">
-              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{k}</p>
-              <p className="mt-2 text-2xl font-bold tracking-tight">—</p>
-              <p className="text-xs text-muted-foreground">Awaiting activity</p>
-            </div>
-          ))}
+        <div className="sheen rounded-2xl border bg-card p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Signals we will track</p>
+          <ul className="mt-3 space-y-3">
+            {["Momentum", "Consistency", "XP Velocity"].map((k) => (
+              <li key={k} className="flex items-center justify-between border-b border-border/60 pb-2.5 last:border-0 last:pb-0 text-sm">
+                <span className="font-medium">{k}</span>
+                <span className="stat-num text-xs font-semibold text-muted-foreground">—</span>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
     </PageTransition>

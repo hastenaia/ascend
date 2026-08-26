@@ -1,7 +1,8 @@
 ﻿import { EmptyState } from "@/components/feedback/empty-state"
 import { PageTransition } from "@/components/feedback/page-transition"
-import { Flag } from "lucide-react"
+import { Flag, ArrowUpRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import Link from "next/link"
 
 export const metadata = { title: "Goals — Ascend" }
 
@@ -15,9 +16,15 @@ export default function GoalsPage() {
         </div>
         <EmptyState
           icon={Flag}
-          title="No goals yet"
+          title="Your north star awaits"
           description="Set a meaningful goal to orient your phases. A goal is larger than a phase; phases are how you get there."
-          action={<Button>Set your first goal</Button>}
+          action={
+            <Button asChild>
+              <Link href="/journey">
+                View your journey <ArrowUpRight className="size-4" />
+              </Link>
+            </Button>
+          }
         />
       </div>
     </PageTransition>
