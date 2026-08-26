@@ -14,6 +14,9 @@ import { PhaseHero } from "@/components/dashboard/phase-hero"
 import { MomentumGauge } from "@/components/momentum/momentum-gauge"
 import { WellnessCard, WellnessFooter } from "@/components/dashboard/wellness-card"
 import { getMomentumSummary } from "@/lib/momentum/queries"
+import { getAnalyticsBundle } from "@/lib/analytics/queries"
+import { buildInsights } from "@/lib/analytics/insights"
+import { InsightList } from "@/components/analytics/insight-list"
 import { CharacterProgress } from "@/components/dashboard/character-progress"
 
 export const metadata = { title: "Dashboard — Ascend" }
@@ -41,12 +44,14 @@ export default async function DashboardPage() {
     )
   }
 
-  const [data, profileRes, statSummaries, momentumSummary] = await Promise.all([
+  const [data, profileRes, statSummaries, momentumSummary, analytics] = await Promise.all([
     getDashboardData(supabase, user.id).catch(() => null),
     supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
     getStatsOverview(supabase).catch(() => []),
     getMomentumSummary(supabase, user.id).catch(() => null),
+    getAnalyticsBundle(supabase, user.id).catch(() => null),
   ])
+  const topInsights = analytics ? buildInsights(analytics).slice(0, 3) : []
 
   const name = ((profileRes.data as { display_name: string | null } | null)?.display_name ?? "").trim() || null
   const current = data?.current ?? null
@@ -183,6 +188,21 @@ export default async function DashboardPage() {
                         <WellnessCard recoveryKindsToday={momentumSummary.recoveryKindsToday} />
                       </div>
                       <WellnessFooter />
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* TERTIARY — Personal insights (facts from real data) */}
+                {topInsights.length > 0 && (
+                  <Card>
+                    <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm">Personal Insights</CardTitle>
+                      <Link href="/analytics" className="text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground">
+                        All analytics →
+                      </Link>
+                    </CardHeader>
+                    <CardContent>
+                      <InsightList insights={topInsights} />
                     </CardContent>
                   </Card>
                 )}
