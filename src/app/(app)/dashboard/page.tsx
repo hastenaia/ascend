@@ -11,7 +11,9 @@ import { getStatsOverview } from "@/lib/stats/queries"
 import { LevelCard } from "@/components/level-card"
 import { DashboardQuests } from "@/components/dashboard/dashboard-quests"
 import { PhaseHero } from "@/components/dashboard/phase-hero"
-import { MomentumPanel } from "@/components/dashboard/momentum-panel"
+import { MomentumGauge } from "@/components/momentum/momentum-gauge"
+import { WellnessCard, WellnessFooter } from "@/components/dashboard/wellness-card"
+import { getMomentumSummary } from "@/lib/momentum/queries"
 import { CharacterProgress } from "@/components/dashboard/character-progress"
 
 export const metadata = { title: "Dashboard — Ascend" }
@@ -39,10 +41,11 @@ export default async function DashboardPage() {
     )
   }
 
-  const [data, profileRes, statSummaries] = await Promise.all([
+  const [data, profileRes, statSummaries, momentumSummary] = await Promise.all([
     getDashboardData(supabase, user.id).catch(() => null),
     supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
     getStatsOverview(supabase).catch(() => []),
+    getMomentumSummary(supabase, user.id).catch(() => null),
   ])
 
   const name = ((profileRes.data as { display_name: string | null } | null)?.display_name ?? "").trim() || null
@@ -165,8 +168,24 @@ export default async function DashboardPage() {
                 {/* SECONDARY — XP / Level */}
                 <LevelCard level={data.level} />
 
-                {/* SECONDARY — Momentum */}
-                <MomentumPanel score={data.momentum.score} streak={data.momentum.streak} thisWeek={data.trend.thisWeek} prevWeek={data.trend.prevWeek} />
+                {/* SECONDARY — Momentum (sustainable consistency) + Recovery */}
+                {momentumSummary && (
+                  <Card>
+                    <CardHeader className="pb-4">
+                      <CardTitle className="text-base">Momentum</CardTitle>
+                      <CardDescription>Consistency over intensity — rest included.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-5">
+                      <MomentumGauge summary={momentumSummary} />
+                      <Separator />
+                      <div>
+                        <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Recovery</p>
+                        <WellnessCard recoveryKindsToday={momentumSummary.recoveryKindsToday} />
+                      </div>
+                      <WellnessFooter />
+                    </CardContent>
+                  </Card>
+                )}
 
                 {/* TERTIARY — Coach teaser */}
                 <Card className="border-primary/15 bg-gradient-to-br from-primary/[0.06] via-violet-500/[0.05] to-transparent">

@@ -329,27 +329,52 @@ export async function beginNextPhase(phaseId: string): Promise<void> {
  * Save a reflection for a completed phase.
  * One reflection per user per phase (upsert semantics via app-level check).
  */
-export async function savePhaseReflection(phaseId: string, body: string): Promise<void> {
+/**
+ * Save a structured reflection for a completed phase — the four questions:
+ * what did you learn / what worked / what didn't / what to change.
+ * `body` stores a labeled join so legacy readers keep working.
+ */
+export async function savePhaseReflection(
+  phaseId: string,
+  input: { learnings?: string; worked?: string; didntWork?: string; changePlan?: string }
+): Promise<void> {
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
   const userId = mustUserId(user ?? null)
 
-  const text = body.trim()
-  if (text.length < 1 || text.length > 5000) throw new Error("Reflection must be between 1 and 5000 characters")
+  const clean = (v: string | undefined, label: string) => {
+    const t = (v ?? "").trim()
+    if (t.length > 1500) throw new Error(`${label} must be under 1500 characters`)
+    return t
+  }
+  const learnings = clean(input.learnings, "What you learned")
+  const worked = clean(input.worked, "What worked")
+  const didntWork = clean(input.didntWork, "What didn't work")
+  const changePlan = clean(input.changePlan, "What you want to change")
+
+  if (!learnings && !worked && !didntWork && !changePlan) throw new Error("Write at least one answer")
+
+  const parts: string[] = []
+  if (learnings) parts.push(`What I learned:\n${learnings}`)
+  if (worked) parts.push(`What worked:\n${worked}`)
+  if (didntWork) parts.push(`What didn't work:\n${didntWork}`)
+  if (changePlan) parts.push(`What I want to change:\n${changePlan}`)
+  const body = parts.join("\n\n").slice(0, 5000)
 
   // Verify ownership of the phase
   const { data: phase } = await supabase.from("phases").select("id").eq("id", phaseId).eq("user_id", userId).single()
   if (!phase) throw new Error("Phase not found")
 
   // Idempotent: replace existing reflection for this phase
+  const payload = { body, learnings: learnings || null, worked: worked || null, didnt_work: didntWork || null, change_plan: changePlan || null }
   const { data: existing } = await supabase.from("reflections").select("id").eq("user_id", userId).eq("phase_id", phaseId).limit(1)
   if (existing && existing.length > 0) {
-    const { error: updErr } = await supabase.from("reflections").update({ body: text }).eq("id", existing[0].id).eq("user_id", userId)
+    const { error: updErr } = await supabase.from("reflections").update(payload).eq("id", existing[0].id).eq("user_id", userId)
     if (updErr) throw new Error(updErr.message)
   } else {
-    const { error: insErr } = await supabase.from("reflections").insert({ user_id: userId, phase_id: phaseId, body: text })
+    const { error: insErr } = await supabase.from("reflections").insert({ user_id: userId, phase_id: phaseId, ...payload })
     if (insErr) throw new Error(insErr.message)
   }
 }

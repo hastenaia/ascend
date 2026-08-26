@@ -1,8 +1,12 @@
 "use client"
-import { Award, BookOpen, Brain, CalendarDays, CheckCircle2, Flag, ListChecks, Quote, Target, Zap } from "lucide-react"
+import * as React from "react"
+import { Award, BookOpen, Brain, CalendarDays, CircleCheckBig, Flag, ListChecks, NotebookPen, Quote, Target, Zap } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import type { CompletedPhaseDetail } from "@/lib/journey/queries"
+import { ReflectionCard } from "@/components/reflections/reflection-card"
+import { ReflectionModal } from "@/components/reflections/reflection-modal"
 
 function Section({ icon: Icon, title, children }: { icon: React.ComponentType<{ className?: string }>; title: string; children: React.ReactNode }) {
   return (
@@ -24,6 +28,8 @@ export function JourneyPhaseDetails({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const [editReflection, setEditReflection] = React.useState(false)
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto border-l border-border/60 sm:max-w-md">
@@ -53,7 +59,7 @@ export function JourneyPhaseDetails({
                   <ul className="space-y-1.5">
                     {detail.milestones.map((m) => (
                       <li key={m.title} className="flex items-start gap-2 text-sm">
-                        <CheckCircle2
+                        <CircleCheckBig
                           className={cn("mt-0.5 size-4 shrink-0", m.status === "completed" ? "text-primary" : "text-muted-foreground/40")}
                         />
                         <span className={cn(m.status === "completed" ? "text-foreground" : "text-muted-foreground")}>
@@ -86,9 +92,15 @@ export function JourneyPhaseDetails({
 
               {detail.reflection && (
                 <Section icon={Quote} title="Reflection">
-                  <blockquote className="rounded-lg border bg-muted/30 p-3 text-sm italic leading-relaxed text-muted-foreground">
-                    {detail.reflection}
-                  </blockquote>
+                  <ReflectionCard reflection={detail.reflection} />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1 h-7 px-2 text-xs text-muted-foreground"
+                    onClick={() => setEditReflection(true)}
+                  >
+                    <NotebookPen className="mr-1 size-3" /> {detail.reflection.learnings || detail.reflection.worked ? "Edit reflection" : "Expand into full reflection"}
+                  </Button>
                 </Section>
               )}
 
@@ -137,6 +149,25 @@ export function JourneyPhaseDetails({
               )}
             </div>
           </>
+        )}
+
+        {detail && (
+          <ReflectionModal
+            phaseId={detail.phaseId}
+            phaseTitle={detail.title}
+            initial={
+              detail.reflection
+                ? {
+                    learnings: detail.reflection.learnings ?? "",
+                    worked: detail.reflection.worked ?? "",
+                    didntWork: detail.reflection.didnt_work ?? "",
+                    changePlan: detail.reflection.change_plan ?? "",
+                  }
+                : undefined
+            }
+            open={editReflection}
+            onOpenChange={setEditReflection}
+          />
         )}
       </SheetContent>
     </Sheet>

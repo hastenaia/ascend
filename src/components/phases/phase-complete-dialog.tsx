@@ -25,21 +25,32 @@ type Props = {
 
 export function PhaseCompleteDialog({ open, onOpenChange, phaseId, phaseTitle, tagline, xp, done, total, finalChallenge, nextPhaseTitle, onBeginNext }: Props) {
   const [busy, setBusy] = React.useState(false)
-  const [reflection, setReflection] = React.useState("")
+  const [reflection, setReflection] = React.useState({ learnings: "", worked: "", didntWork: "", changePlan: "" })
   const [reflectionSaved, setReflectionSaved] = React.useState(false)
+
+  const hasDraft =
+    reflection.learnings.trim().length > 0 ||
+    reflection.worked.trim().length > 0 ||
+    reflection.didntWork.trim().length > 0 ||
+    reflection.changePlan.trim().length > 0
+
+  async function persistReflection(): Promise<boolean> {
+    if (!hasDraft || reflectionSaved) return true
+    try {
+      await savePhaseReflection(phaseId, reflection)
+      setReflectionSaved(true)
+      return true
+    } catch {
+      return false
+    }
+  }
 
   async function handleBegin() {
     if (!onBeginNext) return
     // Best-effort: persist reflection before moving on
-    const text = reflection.trim()
-    if (text.length > 0 && !reflectionSaved) {
-      try {
-        await savePhaseReflection(phaseId, text)
-        setReflectionSaved(true)
-      } catch {}
-    }
     setBusy(true)
     try {
+      await persistReflection()
       await onBeginNext()
       toast.success("Next phase started")
       onOpenChange(false)
@@ -51,11 +62,9 @@ export function PhaseCompleteDialog({ open, onOpenChange, phaseId, phaseTitle, t
   }
 
   async function handleSaveReflection() {
-    const text = reflection.trim()
-    if (text.length === 0) return
     setBusy(true)
     try {
-      await savePhaseReflection(phaseId, text)
+      await savePhaseReflection(phaseId, reflection)
       setReflectionSaved(true)
       toast.success("Reflection saved")
     } catch (e: unknown) {
@@ -101,24 +110,36 @@ export function PhaseCompleteDialog({ open, onOpenChange, phaseId, phaseTitle, t
             <p className="text-xs text-muted-foreground">Stats improved: Coming in later progression phase</p>
           </div>
 
-          <div className="rounded-xl border bg-card p-4 space-y-2">
+          <div className="rounded-xl border bg-card p-4 space-y-2.5">
             <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
               <NotebookPen className="size-3.5" /> Reflection
             </p>
-            {reflectionSaved && reflection.trim().length > 0 ? (
+            {reflectionSaved && hasDraft ? (
               <p className="text-sm text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                <Check className="size-4" /> Saved. See you in the next phase.
+                <Check className="size-4" /> Saved to your Journey History.
               </p>
             ) : (
               <>
-                <Textarea
-                  value={reflection}
-                  onChange={(e) => setReflection(e.target.value)}
-                  placeholder="What did this phase teach you? What will you carry forward?"
-                  maxLength={5000}
-                  rows={3}
-                />
-                <Button size="sm" variant="outline" onClick={handleSaveReflection} disabled={busy || reflection.trim().length === 0}>
+                {(
+                  [
+                    { key: "learnings" as const, label: "What did you learn?" },
+                    { key: "worked" as const, label: "What worked?" },
+                    { key: "didntWork" as const, label: "What didn't work?" },
+                    { key: "changePlan" as const, label: "What do you want to change?" },
+                  ]
+                ).map((q) => (
+                  <div key={q.key} className="space-y-1">
+                    <label className="text-[11px] font-semibold text-muted-foreground">{q.label}</label>
+                    <Textarea
+                      value={reflection[q.key]}
+                      onChange={(e) => setReflection((r) => ({ ...r, [q.key]: e.target.value }))}
+                      maxLength={1500}
+                      rows={2}
+                      className="text-sm"
+                    />
+                  </div>
+                ))}
+                <Button size="sm" variant="outline" onClick={handleSaveReflection} disabled={busy || !hasDraft}>
                   Save Reflection
                 </Button>
               </>

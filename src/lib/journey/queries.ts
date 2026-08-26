@@ -23,7 +23,7 @@ export type CompletedPhaseDetail = {
   milestones: { title: string; status: string; isFinalChallenge: boolean }[]
   quests: { title: string; category: string; xpReward: number; done: boolean }[]
   questTotal: number
-  reflection: string | null
+  reflection: { body: string; learnings: string | null; worked: string | null; didnt_work: string | null; change_plan: string | null } | null
   achievements: { slug: string; name: string; unlockedAt: string }[]
   statChanges: { name: string; delta: number }[]
   skillChanges: { name: string; xp: number }[]
@@ -87,7 +87,7 @@ export async function getCompletedPhaseDetails(
   const [milestonesRes, questsRes, reflectionsRes, unlocksRes] = await Promise.all([
     supabase.from("milestones").select("id,phase_id,title,status,is_final_challenge").in("phase_id", phaseIds).order("sort_order"),
     supabase.from("quests").select("id,phase_id,milestone_id,title,category,xp_reward,status,completed_at").eq("user_id", userId),
-    supabase.from("reflections").select("phase_id,body").eq("user_id", userId).in("phase_id", phaseIds),
+    supabase.from("reflections").select("phase_id,body,learnings,worked,didnt_work,change_plan").eq("user_id", userId).in("phase_id", phaseIds),
     supabase
       .from("user_achievements")
       .select("achievement_id,unlocked_at,achievements(slug,name)")
@@ -96,7 +96,12 @@ export async function getCompletedPhaseDetails(
 
   const milestones = (milestonesRes.data as { id: string; phase_id: string; title: string; status: string; is_final_challenge: boolean }[] | null) ?? []
   const allQuests = (questsRes.data as { id: string; phase_id: string | null; milestone_id: string | null; title: string; category: string; xp_reward: number; status: string; completed_at: string | null }[] | null) ?? []
-  const reflections = new Map(((reflectionsRes.data as { phase_id: string; body: string }[] | null) ?? []).map((r) => [r.phase_id, r.body]))
+  const reflections = new Map(
+    ((reflectionsRes.data as { phase_id: string; body: string; learnings: string | null; worked: string | null; didnt_work: string | null; change_plan: string | null }[] | null) ?? []).map((r) => [
+      r.phase_id,
+      { body: r.body, learnings: r.learnings, worked: r.worked, didnt_work: r.didnt_work, change_plan: r.change_plan },
+    ]),
+  )
   const unlocks = ((unlocksRes.data as { achievement_id: string; unlocked_at: string; achievements: { slug: string; name: string } | { slug: string; name: string }[] }[] | null) ?? []).map((u) => ({
     ...u,
     ach: Array.isArray(u.achievements) ? u.achievements[0] : u.achievements,

@@ -5,6 +5,8 @@ import { Route } from "lucide-react"
 import { JourneyTimeline } from "@/components/journey/journey-timeline"
 import { JourneyInit } from "@/components/journey/journey-init"
 import { getCompletedPhaseDetails, getJourneyTimeline } from "@/lib/journey/queries"
+import { getReflectionHistory } from "@/lib/reflections/queries"
+import { ReflectionHistory } from "@/components/reflections/reflection-history"
 
 export const metadata = { title: "Journey — Ascend" }
 
@@ -24,6 +26,7 @@ export default async function JourneyPage() {
 
   const nodes = await getJourneyTimeline(supabase, user.id).catch(() => [])
   const details = nodes.length > 0 ? await getCompletedPhaseDetails(supabase, user.id, nodes).catch(() => ({}) as Record<string, never>) : {}
+  const reflections = await getReflectionHistory(supabase, user.id).catch(() => [])
 
   return (
     <PageTransition>
@@ -45,6 +48,12 @@ export default async function JourneyPage() {
         ) : (
           <JourneyTimeline nodes={nodes} details={details} />
         )}
+
+        {/* Journey History — every saved reflection */}
+        <section className="space-y-3">
+          <h2 className="text-sm font-bold uppercase tracking-[0.22em]">Journey History</h2>
+          <ReflectionHistory entries={reflections} />
+        </section>
       </div>
     </PageTransition>
   )
