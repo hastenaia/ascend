@@ -19,7 +19,11 @@ export type CreateGoalInput = z.input<typeof createGoalSchema>
 
 export const goalJourneySchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("blueprint"), blueprintSlug: z.string().min(1) }),
-  z.object({ mode: z.literal("custom"), titles: z.array(z.string().trim().min(1).max(120)).min(1).max(12) }),
+  z.object({
+    mode: z.literal("custom"),
+    titles: z.array(z.string().trim().min(1).max(120)).min(1).max(12),
+    objectives: z.array(z.string().trim().max(300)).optional(),
+  }),
 ])
 
 export type GoalJourneyInput = z.infer<typeof goalJourneySchema>

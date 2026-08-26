@@ -75,7 +75,8 @@ export async function createGoalJourneyAction(goalId: string, raw: GoalJourneyIn
     if (!bp) throw new Error("Blueprint not found")
     phaseDefs = (bp.phases as { title: string; objective: string }[]) ?? []
   } else {
-    phaseDefs = input.titles.map((t) => ({ title: t, objective: "" }))
+    const objs = input.mode === "custom" ? input.objectives : undefined
+    phaseDefs = input.titles.map((t, i) => ({ title: t, objective: objs?.[i] ?? "" }))
   }
   if (phaseDefs.length === 0) throw new Error("A journey needs at least one phase")
 
