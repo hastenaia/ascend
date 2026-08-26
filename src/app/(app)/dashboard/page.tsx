@@ -7,7 +7,7 @@ import { Trophy, ScrollText, Bot, ArrowUpRight, Check, Target } from "lucide-rea
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/server"
 import { getDashboardData } from "@/lib/quests/queries"
-import { computeCharacterAttributes } from "@/lib/character"
+import { getStatsOverview } from "@/lib/stats/queries"
 import { LevelCard } from "@/components/level-card"
 import { DashboardQuests } from "@/components/dashboard/dashboard-quests"
 import { PhaseHero } from "@/components/dashboard/phase-hero"
@@ -39,15 +39,15 @@ export default async function DashboardPage() {
     )
   }
 
-  const [data, profileRes] = await Promise.all([
+  const [data, profileRes, statSummaries] = await Promise.all([
     getDashboardData(supabase, user.id).catch(() => null),
     supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
+    getStatsOverview(supabase).catch(() => []),
   ])
 
   const name = ((profileRes.data as { display_name: string | null } | null)?.display_name ?? "").trim() || null
   const current = data?.current ?? null
   const phaseTitle = current ? current.title.replace(/^PHASE \d+ — /, "") : null
-  const attributes = computeCharacterAttributes(data?.categoryXp ?? {})
 
   return (
     <PageTransition>
@@ -121,8 +121,8 @@ export default async function DashboardPage() {
                   </CardContent>
                 </Card>
 
-                {/* SECONDARY — Character Progress */}
-                <CharacterProgress attributes={attributes} />
+                {/* SECONDARY — Character Progress (persisted user_stats) */}
+                <CharacterProgress stats={statSummaries} />
 
                 {/* TERTIARY — Recent achievements */}
                 <Card className="sheen">

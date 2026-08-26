@@ -396,7 +396,9 @@ begin
         where us.user_id = v_user and us.stat_id = (select id from public.stats where slug = r.stat_slug);
         if not found then
           insert into public.user_stats (user_id, stat_id, value)
-          select v_user, s.id, v_pts::numeric from public.stats s where s.slug = r.stat_slug
+          select v_user, s.id,
+            (select coalesce(sum(h.delta), 0)::numeric from public.stat_history h where h.user_id = v_user and h.stat_id = s.id)
+          from public.stats s where s.slug = r.stat_slug
           on conflict (user_id, stat_id) do nothing;
         end if;
       end if;

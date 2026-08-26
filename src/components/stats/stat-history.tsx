@@ -1,13 +1,13 @@
 "use client"
 import { AnimatePresence, motion } from "framer-motion"
-import { CheckCircle2 } from "lucide-react"
+import { CircleCheckBig } from "lucide-react"
 import type { StatHistoryEntry } from "@/lib/stats/queries"
 
 export function StatHistory({ entries }: { entries: StatHistoryEntry[] }) {
   if (entries.length === 0) {
     return (
       <div className="flex items-center gap-2 rounded-xl border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
-        <CheckCircle2 className="size-4 shrink-0" />
+        <CircleCheckBig className="size-4 shrink-0" />
         No contributions yet — complete relevant quests and they will appear here.
       </div>
     )

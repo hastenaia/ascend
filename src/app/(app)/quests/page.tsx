@@ -2,6 +2,7 @@
 import { PageTransition } from "@/components/feedback/page-transition"
 import { QuestsClient } from "@/components/quests/quests-client"
 import { getQuestsPageData } from "@/lib/quests/queries"
+import { getLeafSkillOptions } from "@/lib/stats/queries"
 
 export const metadata = { title: "Quests — Ascend" }
 
@@ -19,10 +20,7 @@ export default async function QuestsPage() {
     )
   }
 
-  const [{ data: skills }, data] = await Promise.all([
-    supabase.from("skills").select("id, name").order("name"),
-    getQuestsPageData(supabase, user.id),
-  ])
+  const [skills, data] = await Promise.all([getLeafSkillOptions(supabase), getQuestsPageData(supabase, user.id)])
 
   return (
     <PageTransition>

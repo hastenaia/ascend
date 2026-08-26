@@ -149,12 +149,11 @@ export async function getQuestsPageData(supabase: SupabaseClient, userId: string
 
 export async function getDashboardData(supabase: SupabaseClient, userId: string) {
   const today = todayDateString()
-  const [todays, level, momentum, recentMilestones, categoryXp, trend] = await Promise.all([
+  const [todays, level, momentum, recentMilestones, trend] = await Promise.all([
     getTodaysQuests(supabase, userId),
     getLevelSummary(supabase),
     getMomentumRow(supabase, userId, today),
     getRecentCompletedMilestones(supabase, userId, 3),
-    getCategoryXp(supabase),
     getMomentumTrend(supabase),
   ])
 
@@ -172,24 +171,7 @@ export async function getDashboardData(supabase: SupabaseClient, userId: string)
     momentum,
     trend,
     recentMilestones,
-    categoryXp,
   }
-}
-
-/** Lifetime XP per quest category (drives character attributes from real activity) */
-export async function getCategoryXp(supabase: SupabaseClient): Promise<Record<string, number>> {
-  const [{ data: txs }, { data: quests }] = await Promise.all([
-    supabase.from("xp_transactions").select("amount, quest_id").eq("source_type", "quest"),
-    supabase.from("quests").select("id, category"),
-  ])
-  const categoryById = new Map((((quests as { id: string; category: string }[]) ?? [])).map((q) => [q.id, q.category]))
-  const out: Record<string, number> = {}
-  for (const t of ((txs as { amount: number; quest_id: string | null }[]) ?? [])) {
-    if (!t.quest_id) continue
-    const cat = categoryById.get(t.quest_id) ?? "general"
-    out[cat] = (out[cat] ?? 0) + t.amount
-  }
-  return out
 }
 
 /** Momentum score: current week-to-date vs previous full week */
