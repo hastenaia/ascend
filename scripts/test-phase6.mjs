@@ -49,11 +49,31 @@ check("catalog has >= 6 achievements", (catalog ?? []).length >= 6, `got ${(cata
 const { data: baselineUnlocks } = await authed.from("user_achievements").select("achievement_id")
 const hadFirstStep = ((baselineUnlocks ?? []).length ?? 0) > 0
 
-// 2) Create a fresh quest and complete it via RPC
+// 2) Ensure a parent phase exists (quests_parent constraint), create quest, complete via RPC
+let { data: parentPhase } = await authed
+  .from("phases")
+  .select("id")
+  .eq("user_id", auth.user.id)
+  .is("goal_id", null)
+  .limit(1)
+if (!parentPhase || parentPhase.length === 0) {
+  const ins = await authed
+    .from("phases")
+    .insert({ user_id: auth.user.id, title: "P6 Test Phase", order_index: 99, status: "active" })
+    .select("id")
+    .single()
+  if (ins.error) {
+    console.error(`Phase bootstrap failed: ${ins.error.message}`)
+    process.exit(1)
+  }
+  parentPhase = [ins.data]
+}
+
 const { data: quest, error: qErr } = await authed
   .from("quests")
   .insert({
     user_id: auth.user.id,
+    phase_id: parentPhase[0].id,
     title: `P6 test ${Date.now()}`,
     category: "intellect",
     difficulty: "medium",
