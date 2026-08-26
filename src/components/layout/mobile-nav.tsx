@@ -24,7 +24,7 @@ export function MobileHeader({
 }) {
   const pathname = usePathname()
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-background/70 px-4 backdrop-blur-md supports-[backdrop-filter]:bg-background/55 lg:hidden">
+    <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-background/95 px-4 lg:hidden">
       <Sheet>
         <SheetTrigger asChild>
           <Button variant="ghost" size="icon" className="size-10">
@@ -113,7 +113,7 @@ export function BottomNav() {
   const pathname = usePathname()
   const items = NAV_ITEMS.filter((n) => (MOBILE_PRIMARY_HREFS as readonly string[]).includes(n.href))
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/90 backdrop-blur-md supports-[backdrop-filter]:bg-background/75 lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+    <nav className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
       <div className="mx-auto flex max-w-md items-center justify-around px-2 py-1.5">
         {items.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/")

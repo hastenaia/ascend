@@ -41,13 +41,18 @@ type PhaseLite = {
 }
 
 export async function getJourneyTimeline(supabase: SupabaseClient, userId: string): Promise<JourneyNode[]> {
-  const [phasesRes, milestonesRes, payoutsRes] = await Promise.all([
-    supabase.from("phases").select("id,title,objective,status,order_index,start_date,created_at,completed_at").eq("user_id", userId).order("order_index"),
-    supabase.from("milestones").select("id,phase_id,status").in("phase_id", (await supabase.from("phases").select("id").eq("user_id", userId)).data?.map((p) => p.id) ?? ["00000000-0000-0000-0000-000000000000"]),
+  const phasesRes = await supabase
+    .from("phases")
+    .select("id,title,objective,status,order_index,start_date,created_at,completed_at")
+    .eq("user_id", userId)
+    .order("order_index")
+  const phases = (phasesRes.data as PhaseLite[] | null) ?? []
+  if (phases.length === 0) return []
+
+  const [milestonesRes, payoutsRes] = await Promise.all([
+    supabase.from("milestones").select("id,phase_id,status").in("phase_id", phases.map((p) => p.id)),
     supabase.from("xp_transactions").select("amount,source_id").eq("user_id", userId).eq("source_type", "phase"),
   ])
-
-  const phases = (phasesRes.data as PhaseLite[] | null) ?? []
   const milestones = (milestonesRes.data as { id: string; phase_id: string; status: string }[] | null) ?? []
   const payouts = new Map(((payoutsRes.data as { amount: number; source_id: string | null }[] | null) ?? []).filter((p) => p.source_id).map((p) => [p.source_id as string, p.amount]))
 

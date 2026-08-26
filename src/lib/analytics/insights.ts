@@ -1,13 +1,29 @@
-import type { AnalyticsBundle } from "@/lib/analytics/queries"
-
 export type Insight = { icon: "trend-up" | "trend-down" | "target" | "flame" | "trophy" | "compass" | "check"; text: string }
+
+/**
+ * Minimal shape needed to compute insights. The full AnalyticsBundle satisfies
+ * this structurally, but a dashboard can supply a much cheaper subset.
+ */
+export type InsightInput = {
+  completionsThisWeek: number
+  completionsLastWeek: number
+  level: number
+  phases: { status: string; progressPct: number; milestonesDone: number; milestonesTotal: number }[]
+  estimatedDaysToNextLevel: number | null
+  xpPerDay14: number
+  momentum: { date: string; score: number }[]
+  currentMomentum: number
+  categories: { category: string; count: number }[]
+  goals: { title: string; progressPct: number; phasesTotal: number }[]
+  achievementsUnlocked: { name: string; date: string }[]
+}
 
 /**
  * Personal insights derived ONLY from real computed numbers. Every statement
  * is a verifiable fact about the user's data — no personality analysis, no
  * psychological or medical framing.
  */
-export function buildInsights(b: AnalyticsBundle): Insight[] {
+export function buildInsights(b: InsightInput): Insight[] {
   const out: Insight[] = []
 
   // Activity direction (week over week)

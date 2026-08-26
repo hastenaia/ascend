@@ -16,6 +16,7 @@ export function DashboardQuests({ quests }: { quests: QuestRow[] }) {
   const router = useRouter()
   const [busyId, setBusyId] = React.useState<string | null>(null)
   const [anim, setAnim] = React.useState<{ visible: boolean; xp: number }>({ visible: false, xp: 0 })
+  const [, startTransition] = React.useTransition()
 
   async function handleComplete(quest: QuestRow) {
     if (busyId) return
@@ -26,7 +27,7 @@ export function DashboardQuests({ quests }: { quests: QuestRow[] }) {
       announceUnlockedAchievements(res.unlocked_achievements)
       toast.success(`+${res.xp_awarded} XP earned`)
       if (res.milestone_updated) toast("Milestone completed", { icon: "🎯" })
-      router.refresh()
+      startTransition(() => router.refresh())
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Could not complete quest")
     } finally {

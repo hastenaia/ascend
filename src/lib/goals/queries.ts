@@ -73,15 +73,19 @@ type PhaseLite = {
 
 async function fetchGoalPhases(supabase: SupabaseClient, userId: string, goalIds: string[]) {
   if (goalIds.length === 0) return { phases: [] as PhaseLite[], milestones: [] as { id: string; phase_id: string; status: string }[] }
-  const [phasesRes, milestonesRes] = await Promise.all([
-    supabase.from("phases").select("id,goal_id,title,objective,status,order_index").eq("user_id", userId).in("goal_id", goalIds).order("order_index"),
-    supabase.from("milestones").select("id,phase_id,status").in("phase_id",
-      ((await supabase.from("phases").select("id").eq("user_id", userId).in("goal_id", goalIds)).data ?? []).map((p) => p.id)),
-  ])
-  return {
-    phases: (phasesRes.data as PhaseLite[] | null) ?? [],
-    milestones: (milestonesRes.data as { id: string; phase_id: string; status: string }[] | null) ?? [],
-  }
+  const { data: phaseRows } = await supabase
+    .from("phases")
+    .select("id,goal_id,title,objective,status,order_index")
+    .eq("user_id", userId)
+    .in("goal_id", goalIds)
+    .order("order_index")
+  const phases = (phaseRows as PhaseLite[] | null) ?? []
+  if (phases.length === 0) return { phases, milestones: [] }
+  const { data: milestoneRows } = await supabase
+    .from("milestones")
+    .select("id,phase_id,status")
+    .in("phase_id", phases.map((p) => p.id))
+  return { phases, milestones: (milestoneRows as { id: string; phase_id: string; status: string }[] | null) ?? [] }
 }
 
 function computePhaseStats(phases: PhaseLite[], milestones: { id: string; phase_id: string; status: string }[]) {

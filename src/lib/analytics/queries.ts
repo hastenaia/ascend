@@ -55,7 +55,7 @@ export type AnalyticsBundle = {
 const CATEGORIES = ["intellect", "physical", "discipline", "reflection", "craft", "work", "general"] as const
 
 export async function getAnalyticsBundle(supabase: SupabaseClient, userId: string): Promise<AnalyticsBundle> {
-  const [xpRes, completionsRes, questsRes, phasesRes, msRes, statsValRes, statsCatRes, skillsRes, momRes, goalsRes, achRes, doneCountRes] =
+  const [xpRes, completionsRes, questsRes, phasesRes, msRes, statsValRes, statsCatRes, skillsRes, momRes, goalsRes, achRes, doneCountRes, goalPhasesRes] =
     await Promise.all([
       supabase.from("xp_transactions").select("amount,created_at").eq("user_id", userId).order("created_at").limit(2000),
       supabase.from("quest_completions").select("quest_id,created_at").eq("user_id", userId).gte("created_at", daysAgoIso(210)),
@@ -69,6 +69,7 @@ export async function getAnalyticsBundle(supabase: SupabaseClient, userId: strin
       supabase.from("goals").select("id,title,status").eq("user_id", userId).neq("status", "archived"),
       supabase.from("user_achievements").select("unlocked_at,achievements(name)").eq("user_id", userId).order("unlocked_at", { ascending: false }),
       supabase.from("quests").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "completed"),
+      supabase.from("phases").select("id,goal_id,status").eq("user_id", userId).not("goal_id", "is", null),
     ])
 
   // --- XP series: cumulative over last 30 days ---
@@ -189,8 +190,7 @@ export async function getAnalyticsBundle(supabase: SupabaseClient, userId: strin
 
   // --- Goals ---
   const goalRows = (goalsRes.data as { id: string; title: string }[] | null) ?? []
-  const goalPhases = phaseList.length >= 0 ? await supabase.from("phases").select("id,goal_id,title,status").eq("user_id", userId).not("goal_id", "is", null) : null
-  const goalPhaseRows = (goalPhases?.data as { id: string; goal_id: string; status: string }[] | null) ?? []
+  const goalPhaseRows = (goalPhasesRes.data as { id: string; goal_id: string; status: string }[] | null) ?? []
   const goals: GoalBar[] = goalRows.map((g) => {
     const gp = goalPhaseRows.filter((p) => p.goal_id === g.id)
     return {

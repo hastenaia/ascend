@@ -72,13 +72,19 @@ async function getCompletionsSince(supabase: SupabaseClient, userId: string, sin
 }
 
 async function getXpSummaries(supabase: SupabaseClient) {
-  // Lifetime total drives the level formula; recent window powers "today" stats.
-  const [{ data: all }, { data: recent }] = await Promise.all([
-    supabase.from("xp_transactions").select("amount"),
+  // Lifetime total comes from the maintained user_levels snapshot (O(1) row read)
+  // instead of summing the entire ledger on every request. Falls back to a sum
+  // only when the snapshot is missing.
+  const [snap, recent] = await Promise.all([
+    supabase.from("user_levels").select("xp").limit(1).maybeSingle(),
     supabase.from("xp_transactions").select("amount, created_at").gte("created_at", startOfTodayIso()),
   ])
-  const total = ((all as { amount: number }[]) ?? []).reduce((s, r) => s + r.amount, 0)
-  const today = ((recent as { amount: number }[]) ?? []).reduce((s, r) => s + r.amount, 0)
+  let total = (snap.data as { xp: number } | null)?.xp
+  if (typeof total !== "number") {
+    const { data: all } = await supabase.from("xp_transactions").select("amount")
+    total = ((all as { amount: number }[]) ?? []).reduce((s, r) => s + r.amount, 0)
+  }
+  const today = ((recent.data as { amount: number }[] | null) ?? []).reduce((s, r) => s + r.amount, 0)
   return { total, today }
 }
 
@@ -98,7 +104,7 @@ export async function getRecentCompletedMilestones(supabase: SupabaseClient, use
   if (ids.length === 0) return []
   const { data, error } = await supabase
     .from("milestones")
-    .select("*")
+    .select("id,title,status,updated_at")
     .in("phase_id", ids)
     .eq("status", "completed")
     .order("updated_at", { ascending: false })

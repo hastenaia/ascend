@@ -34,6 +34,7 @@ export function QuestsClient({ activeQuests, completedQuests, level, todaysCount
   const [detailOpen, setDetailOpen] = React.useState(false)
   const [createOpen, setCreateOpen] = React.useState(false)
   const [busyId, setBusyId] = React.useState<string | null>(null)
+  const [, startTransition] = React.useTransition()
   const [anim, setAnim] = React.useState<{ visible: boolean; xp: number }>({ visible: false, xp: 0 })
 
   function matches(q: QuestRow): boolean {
@@ -58,7 +59,7 @@ export function QuestsClient({ activeQuests, completedQuests, level, todaysCount
       if (res.already_completed) toast.info("Already completed — no duplicate XP")
       else toast.success(`+${res.xp_awarded} XP earned`)
       if (res.milestone_updated) toast("Milestone completed", { icon: "🎯" })
-      router.refresh()
+      startTransition(() => router.refresh())
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Could not complete quest")
     } finally {

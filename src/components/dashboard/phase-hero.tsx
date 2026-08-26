@@ -27,7 +27,7 @@ export function PhaseHero({ phaseNumber, title, objective, progressPct, complete
       transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
       className="glow-primary sheen relative overflow-hidden rounded-3xl border border-primary/25 ascend-gradient-strong p-[1px]"
     >
-      <div className="relative overflow-hidden rounded-[calc(1.5rem-1px)] bg-card/92 backdrop-blur-sm">
+      <div className="relative overflow-hidden rounded-[calc(1.5rem-1px)] bg-card">
         {/* watermark phase number */}
         <span aria-hidden className="stat-num pointer-events-none absolute -right-3 -top-9 select-none text-[10rem] font-black leading-none text-primary/[0.05]">
           {num}
