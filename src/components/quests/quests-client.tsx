@@ -13,6 +13,7 @@ import { QuestFilters, defaultFilters, type QuestFilterState } from "@/component
 import { QuestCompletionAnimation } from "@/components/quests/quest-completion-animation"
 import { QuestCreateDialog } from "@/components/quests/quest-create-dialog"
 import { completeQuestAction, deleteQuestAction } from "@/lib/quests/actions"
+import { announceUnlockedAchievements } from "@/lib/achievements/events"
 import type { QuestRow } from "@/lib/quests/queries"
 import type { LevelProgress as LevelProgressType } from "@/lib/levels"
 
@@ -53,6 +54,7 @@ export function QuestsClient({ activeQuests, completedQuests, level, todaysCount
       const res = await completeQuestAction(quest.id)
       setDetailOpen(false)
       setAnim({ visible: true, xp: res.xp_awarded ?? quest.xp_reward })
+      announceUnlockedAchievements(res.unlocked_achievements)
       if (res.already_completed) toast.info("Already completed — no duplicate XP")
       else toast.success(`+${res.xp_awarded} XP earned`)
       if (res.milestone_updated) toast("Milestone completed", { icon: "🎯" })

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/feedback/empty-state"
 import { QuestCompletionAnimation } from "@/components/quests/quest-completion-animation"
 import { completeQuestAction } from "@/lib/quests/actions"
+import { announceUnlockedAchievements } from "@/lib/achievements/events"
 import { categoryIcon } from "@/lib/icons"
 import type { QuestRow } from "@/lib/quests/queries"
 
@@ -22,6 +23,7 @@ export function DashboardQuests({ quests }: { quests: QuestRow[] }) {
     try {
       const res = await completeQuestAction(quest.id)
       setAnim({ visible: true, xp: res.xp_awarded ?? quest.xp_reward })
+      announceUnlockedAchievements(res.unlocked_achievements)
       toast.success(`+${res.xp_awarded} XP earned`)
       if (res.milestone_updated) toast("Milestone completed", { icon: "🎯" })
       router.refresh()

@@ -8,6 +8,14 @@ export type QuestDifficulty = "easy" | "medium" | "hard" | "challenge"
 export type QuestCategory = "intellect" | "physical" | "discipline" | "reflection" | "craft" | "work" | "general"
 export type Recurrence = "none" | "daily" | "weekly"
 
+export type UnlockedAchievement = {
+  slug: string
+  name: string
+  description: string
+  flavor: string
+  xp_reward: number
+}
+
 export type CompleteQuestResult = {
   ok: boolean
   error?: string
@@ -18,6 +26,7 @@ export type CompleteQuestResult = {
   xp_to_next?: number
   milestone_updated?: boolean
   streak?: number | null
+  unlocked_achievements?: UnlockedAchievement[] | null
 }
 
 export type FinalChallengeJson = {
@@ -273,7 +282,7 @@ export type Database = {
           user_id: string
           amount: number
           source: string
-          source_type: "quest" | "milestone" | "phase" | "bonus" | "adjustment" | null
+          source_type: "quest" | "milestone" | "phase" | "bonus" | "adjustment" | "achievement" | null
           source_id: string | null
           source_key: string | null
           quest_id: string | null

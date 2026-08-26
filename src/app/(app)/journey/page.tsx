@@ -1,8 +1,10 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createClient } from "@/lib/supabase/server"
 import { PageTransition } from "@/components/feedback/page-transition"
-import { JourneyClient } from "@/components/phases/journey-client"
-import { getJourney } from "@/lib/phases/queries"
+import { EmptyState } from "@/components/feedback/empty-state"
+import { Route } from "lucide-react"
+import { JourneyTimeline } from "@/components/journey/journey-timeline"
+import { JourneyInit } from "@/components/journey/journey-init"
+import { getCompletedPhaseDetails, getJourneyTimeline } from "@/lib/journey/queries"
 
 export const metadata = { title: "Journey — Ascend" }
 
@@ -20,32 +22,30 @@ export default async function JourneyPage() {
     )
   }
 
-  const journey = await getJourney(supabase, user.id).catch(() => ({ templates: [], phases: [], hasJourney: false } as any))
-
-  const items = journey.phases.map((p: any) => ({
-    id: p.id,
-    title: p.title,
-    order_index: p.order_index,
-    status: p.status,
-    subtitle: p.subtitle ?? null,
-    objective: p.objective ?? null,
-    progress: p.progress,
-    done: p.completed,
-    total: p.total,
-    focusAreas: Array.isArray(p.focus_areas) ? (p.focus_areas as string[]) : [],
-  }))
-
-  const templates = journey.templates.map((t: any) => ({
-    id: t.id,
-    title: t.title,
-    order_index: t.order_index,
-    status: "locked" as const,
-    subtitle: t.subtitle,
-  }))
+  const nodes = await getJourneyTimeline(supabase, user.id).catch(() => [])
+  const details = nodes.length > 0 ? await getCompletedPhaseDetails(supabase, user.id, nodes).catch(() => ({}) as Record<string, never>) : {}
 
   return (
     <PageTransition>
-      <JourneyClient hasJourney={journey.hasJourney} items={items} templates={templates} />
+      <div className="space-y-8">
+        <header>
+          <h1 className="text-sm font-bold uppercase tracking-[0.22em]">Your Journey</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Every phase you close becomes a chapter here — real dates, real XP, real changes.
+          </p>
+        </header>
+
+        {nodes.length === 0 ? (
+          <EmptyState
+            icon={Route}
+            title="No journey yet"
+            description="Initialize your six-phase growth arc to begin the timeline."
+            action={<JourneyInit />}
+          />
+        ) : (
+          <JourneyTimeline nodes={nodes} details={details} />
+        )}
+      </div>
     </PageTransition>
   )
 }

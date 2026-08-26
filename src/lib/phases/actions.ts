@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { canCompletePhase, calcEarnedXp } from "@/lib/phases/queries"
 import type { PhaseStatus } from "@/types/ascend"
+import type { UnlockedAchievement } from "@/types/database"
 
 function mustUserId(user: { id: string } | null): string {
   if (!user) throw new Error("Not authenticated")
@@ -189,7 +190,7 @@ export async function initializeJourney(): Promise<{ created: boolean; message: 
 /**
  * Mark phase completed server-side only if all milestones + final challenge done
  */
-export async function completePhase(phaseId: string): Promise<{ xp: number }> {
+export async function completePhase(phaseId: string): Promise<{ xp: number; unlocked_achievements: UnlockedAchievement[] }> {
   const supabase = await createClient()
   const {
     data: { user },
@@ -203,7 +204,7 @@ export async function completePhase(phaseId: string): Promise<{ xp: number }> {
     // Already completed — return existing xp, prevent duplicate transactions
     const { data: existingTx } = await supabase.from("xp_transactions").select("amount").eq("user_id", userId).eq("source", `phase_complete:${phaseId}`).limit(1)
     const xp = existingTx?.[0]?.amount ?? ((phase as any).reward_xp ?? 0)
-    return { xp: typeof xp === "number" ? xp : 0 }
+    return { xp: typeof xp === "number" ? xp : 0, unlocked_achievements: [] }
   }
 
   if ((phase as any).status !== "active") throw new Error("Only active phases can be completed")
@@ -232,13 +233,16 @@ export async function completePhase(phaseId: string): Promise<{ xp: number }> {
   // XP payout via secure RPC (server-side only; idempotent per phase).
   // Falls back to the legacy client insert if 0004 migration hasn't been applied yet.
   let awardedXp = earnedXp
+  let unlockedAchievements: UnlockedAchievement[] = []
   const { data: awardData, error: awardErr } = await supabase.rpc("award_phase_xp", { p_phase_id: phaseId })
   const missingRpc =
     awardErr?.code === "PGRST202" || /function public\.award_phase_xp|Could not find the function/i.test(awardErr?.message ?? "")
   if (!awardErr && awardData) {
-    const res = awardData as { ok?: boolean; xp_awarded?: number; error?: string }
-    if (res.ok) awardedXp = res.xp_awarded ?? 0
-    else console.error("[completePhase] award_phase_xp rejected:", res.error)
+    const res = awardData as { ok?: boolean; xp_awarded?: number; unlocked_achievements?: UnlockedAchievement[] | null; error?: string }
+    if (res.ok) {
+      awardedXp = res.xp_awarded ?? 0
+      unlockedAchievements = res.unlocked_achievements ?? []
+    } else console.error("[completePhase] award_phase_xp rejected:", res.error)
   } else if (missingRpc) {
     const { data: existingXp } = await supabase.from("xp_transactions").select("id").eq("user_id", userId).eq("source", `phase_complete:${phaseId}`).limit(1)
     const alreadyRewarded = existingXp && existingXp.length > 0
@@ -269,7 +273,7 @@ export async function completePhase(phaseId: string): Promise<{ xp: number }> {
   revalidatePath("/phase")
   revalidatePath("/journey")
   revalidatePath("/dashboard")
-  return { xp: awardedXp }
+  return { xp: awardedXp, unlocked_achievements: unlockedAchievements }
 }
 
 /** Begin next phase: available -> active, server-verified */

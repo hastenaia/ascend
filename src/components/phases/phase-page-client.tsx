@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/feedback/empty-state"
 import { PhaseTimeline } from "@/components/phases/phase-timeline"
 import { PhaseCompleteDialog } from "@/components/phases/phase-complete-dialog"
 import { initializeJourney, completePhase, beginNextPhase, toggleMilestone } from "@/lib/phases/actions"
+import { announceUnlockedAchievements } from "@/lib/achievements/events"
 import type { PhaseWithProgress } from "@/lib/phases/queries"
 
 type Props = {
@@ -56,7 +57,8 @@ export function PhasePageClient({ hasJourney, current, timeline, nextPhaseTitle,
     if (!current) return
     setBusy(true)
     try {
-      const { xp } = await completePhase(current.id)
+      const { xp, unlocked_achievements } = await completePhase(current.id)
+      announceUnlockedAchievements(unlocked_achievements)
       setEarnedXp(xp)
       setCompleteOpen(true)
       toast.success(`Phase completed +${xp} XP`)

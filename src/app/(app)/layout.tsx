@@ -2,6 +2,7 @@ import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { ensureProfile } from "@/lib/supabase/get-profile"
 import { AppShell } from "@/components/layout/app-shell"
+import { AchievementUnlockOverlay } from "@/components/achievements/achievement-unlock-overlay"
 import { getLevelSummary } from "@/lib/quests/queries"
 
 export default async function AppGroupLayout({ children }: { children: React.ReactNode }) {
@@ -31,6 +32,7 @@ export default async function AppGroupLayout({ children }: { children: React.Rea
 
   return (
     <AppShell userEmail={user.email} displayName={displayName} level={levelChip}>
+      <AchievementUnlockOverlay />
       {children}
     </AppShell>
   )
