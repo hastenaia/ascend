@@ -10,6 +10,7 @@ import {
   FlaskConical,
   Bot,
   Settings2,
+  Activity,
   type LucideIcon,
 } from "lucide-react"
 
@@ -28,6 +29,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Current Phase", href: "/phase", icon: Target, group: "progression", description: "Phase progress" },
   { label: "Journey", href: "/journey", icon: Route, group: "progression", description: "Your path" },
   { label: "Quests", href: "/quests", icon: ScrollText, group: "progression", description: "Active quests" },
+  { label: "Character", href: "/stats", icon: Activity, group: "progression", description: "Stats and attributes" },
   { label: "Skills", href: "/skills", icon: Sparkles, group: "progression", description: "Skill tree" },
   { label: "Achievements", href: "/achievements", icon: Trophy, group: "progression", description: "Milestones" },
   { label: "Goals", href: "/goals", icon: Flag, group: "development", description: "Long-term goals" },
