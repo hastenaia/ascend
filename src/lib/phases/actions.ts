@@ -218,10 +218,6 @@ export async function completePhase(phaseId: string): Promise<{ xp: number }> {
 
   const earnedXp = calcEarnedXp(phase as any, ms as any)
 
-  // Idempotent XP transaction: use source phase_complete:<id> unique per user via app-level check
-  const { data: existingXp } = await supabase.from("xp_transactions").select("id").eq("user_id", userId).eq("source", `phase_complete:${phaseId}`).limit(1)
-  const alreadyRewarded = existingXp && existingXp.length > 0
-
   const now = new Date().toISOString()
 
   // Update phase to completed
@@ -233,17 +229,32 @@ export async function completePhase(phaseId: string): Promise<{ xp: number }> {
     .eq("user_id", userId)
   if (updErr) throw new Error(updErr.message)
 
-  // XP transaction (prevent duplicate)
-  if (!alreadyRewarded && earnedXp > 0) {
-    const { error: xpErr } = await supabase.from("xp_transactions").insert({
-      user_id: userId,
-      amount: earnedXp,
-      source: `phase_complete:${phaseId}`,
-      description: `Completed ${(phase as any).title}`,
-    })
-    if (xpErr && xpErr.code !== "23505") {
-      console.error("[completePhase] xp insert failed", xpErr.message)
+  // XP payout via secure RPC (server-side only; idempotent per phase).
+  // Falls back to the legacy client insert if 0004 migration hasn't been applied yet.
+  let awardedXp = earnedXp
+  const { data: awardData, error: awardErr } = await supabase.rpc("award_phase_xp", { p_phase_id: phaseId })
+  const missingRpc =
+    awardErr?.code === "PGRST202" || /function public\.award_phase_xp|Could not find the function/i.test(awardErr?.message ?? "")
+  if (!awardErr && awardData) {
+    const res = awardData as { ok?: boolean; xp_awarded?: number; error?: string }
+    if (res.ok) awardedXp = res.xp_awarded ?? 0
+    else console.error("[completePhase] award_phase_xp rejected:", res.error)
+  } else if (missingRpc) {
+    const { data: existingXp } = await supabase.from("xp_transactions").select("id").eq("user_id", userId).eq("source", `phase_complete:${phaseId}`).limit(1)
+    const alreadyRewarded = existingXp && existingXp.length > 0
+    if (!alreadyRewarded && earnedXp > 0) {
+      const { error: xpErr } = await supabase.from("xp_transactions").insert({
+        user_id: userId,
+        amount: earnedXp,
+        source: `phase_complete:${phaseId}`,
+        description: `Completed ${(phase as any).title}`,
+      })
+      if (xpErr && xpErr.code !== "23505") {
+        console.error("[completePhase] xp insert failed", xpErr.message)
+      }
     }
+  } else if (awardErr) {
+    console.error("[completePhase] award_phase_xp failed", awardErr.message)
   }
 
   // Unlock next phase (strict sequential: next order_index where status=locked)
@@ -258,7 +269,7 @@ export async function completePhase(phaseId: string): Promise<{ xp: number }> {
   revalidatePath("/phase")
   revalidatePath("/journey")
   revalidatePath("/dashboard")
-  return { xp: earnedXp }
+  return { xp: awardedXp }
 }
 
 /** Begin next phase: available -> active, server-verified */
