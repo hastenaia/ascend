@@ -8,6 +8,9 @@ export type QuestDifficulty = "easy" | "medium" | "hard" | "challenge"
 export type QuestCategory = "intellect" | "physical" | "discipline" | "reflection" | "craft" | "work" | "general"
 export type Recurrence = "none" | "daily" | "weekly"
 
+export type GoalCategory = "career" | "health" | "skills" | "personal" | "finance" | "creative" | "other"
+export type GoalPriority = "low" | "medium" | "high" | "critical"
+
 export type UnlockedAchievement = {
   slug: string
   name: string
@@ -95,9 +98,48 @@ export type Database = {
         Update: { id?: string; username?: string | null; display_name?: string | null; avatar_url?: string | null; bio?: string | null; created_at?: string; updated_at?: string }
       }
       goals: {
-        Row: { id: string; user_id: string; title: string; description: string | null; status: string; created_at: string; updated_at: string }
-        Insert: { id?: string; user_id: string; title: string; description?: string | null; status?: string; created_at?: string; updated_at?: string }
-        Update: { id?: string; user_id?: string; title?: string; description?: string | null; status?: string; created_at?: string; updated_at?: string }
+        Row: {
+          id: string
+          user_id: string
+          title: string
+          description: string | null
+          status: string
+          category: GoalCategory
+          priority: GoalPriority
+          target_date: string | null
+          desired_outcome: string | null
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          title: string
+          description?: string | null
+          status?: string
+          category?: GoalCategory
+          priority?: GoalPriority
+          target_date?: string | null
+          desired_outcome?: string | null
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          title?: string
+          description?: string | null
+          status?: string
+          category?: GoalCategory
+          priority?: GoalPriority
+          target_date?: string | null
+          desired_outcome?: string | null
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
       }
       phases: {
         Row: {

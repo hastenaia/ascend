@@ -55,6 +55,8 @@ export async function getUserPhases(supabase: SupabaseClient, userId: string): P
     .from("phases")
     .select("*")
     .eq("user_id", userId)
+    // Global journey only — per-goal journeys are fetched via lib/goals
+    .is("goal_id", null)
     .order("order_index", { ascending: true })
     .order("phase_number", { ascending: true })
   if (error) throw error

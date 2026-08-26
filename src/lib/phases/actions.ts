@@ -261,11 +261,14 @@ export async function completePhase(phaseId: string): Promise<{ xp: number; unlo
     console.error("[completePhase] award_phase_xp failed", awardErr.message)
   }
 
-  // Unlock next phase (strict sequential: next order_index where status=locked)
-  const { data: allPhases } = await supabase.from("phases").select("id, order_index, status").eq("user_id", userId).order("order_index")
-  const sorted = (allPhases as { id: string; order_index: number; status: string }[]) ?? []
-  const currentIdx = sorted.findIndex((p) => p.id === phaseId)
-  const next = sorted.slice(currentIdx + 1).find((p) => p.status === "locked")
+  // Unlock next phase in the SAME journey lineage (global vs goal-scoped):
+  // strict sequential within that lineage, never crossing journeys.
+  const { data: allPhases } = await supabase.from("phases").select("id, order_index, status, goal_id").eq("user_id", userId)
+  const sameLineage = ((allPhases as { id: string; order_index: number; status: string; goal_id: string | null }[]) ?? [])
+    .filter((p) => p.goal_id === ((phase as any).goal_id ?? null) || (p.goal_id === null && (phase as any).goal_id === null))
+    .sort((a, b) => a.order_index - b.order_index)
+  const currentIdx = sameLineage.findIndex((p) => p.id === phaseId)
+  const next = sameLineage.slice(currentIdx + 1).find((p) => p.status === "locked")
   if (next) {
     await supabase.from("phases").update({ status: "available" as PhaseStatus }).eq("id", next.id).eq("user_id", userId)
   }
@@ -273,10 +276,12 @@ export async function completePhase(phaseId: string): Promise<{ xp: number; unlo
   revalidatePath("/phase")
   revalidatePath("/journey")
   revalidatePath("/dashboard")
+  revalidatePath("/goals")
+  if ((phase as any).goal_id) revalidatePath(`/goals/${(phase as any).goal_id}`)
   return { xp: awardedXp, unlocked_achievements: unlockedAchievements }
 }
 
-/** Begin next phase: available -> active, server-verified */
+/** Begin next phase: available -> active, server-verified (lineage-scoped) */
 export async function beginNextPhase(phaseId: string): Promise<void> {
   const supabase = await createClient()
   const {
@@ -284,18 +289,26 @@ export async function beginNextPhase(phaseId: string): Promise<void> {
   } = await supabase.auth.getUser()
   const userId = mustUserId(user ?? null)
 
-  const { data: target, error } = await supabase.from("phases").select("id, status, order_index, user_id").eq("id", phaseId).eq("user_id", userId).single()
+  const { data: target, error } = await supabase
+    .from("phases")
+    .select("id, status, order_index, user_id, goal_id")
+    .eq("id", phaseId)
+    .eq("user_id", userId)
+    .single()
   if (error || !target) throw new Error("Phase not found")
   if ((target as any).status !== "available") throw new Error("Phase is not available")
 
-  // Ensure strictly sequential: previous must be completed (except first)
-  const { data: all } = await supabase.from("phases").select("order_index, status").eq("user_id", userId).order("order_index")
-  const prev = (all as { order_index: number; status: string }[])?.find((p) => p.order_index === (target as any).order_index - 1)
+  // Strictly sequential within the same journey lineage: previous must be completed
+  const { data: all } = await supabase.from("phases").select("order_index, status, goal_id").eq("user_id", userId)
+  const lineage = ((all as { order_index: number; status: string; goal_id: string | null }[]) ?? []).filter(
+    (p) => (p.goal_id ?? null) === ((target as any).goal_id ?? null),
+  )
+  const prev = lineage.find((p) => p.order_index === (target as any).order_index - 1)
   if (prev && prev.status !== "completed") throw new Error("Complete the previous phase first")
 
-  // Only one active at a time
-  const { data: actives } = await supabase.from("phases").select("id").eq("user_id", userId).eq("status", "active")
-  if (actives && actives.length > 0) throw new Error("Another phase is already active")
+  // Only one active per lineage
+  const actives = lineage.filter((p) => p.status === "active" && p.order_index !== (target as any).order_index)
+  if (actives.length > 0) throw new Error("Another phase is already active")
 
   const { error: updErr } = await supabase
     .from("phases")
@@ -308,6 +321,8 @@ export async function beginNextPhase(phaseId: string): Promise<void> {
   revalidatePath("/phase")
   revalidatePath("/journey")
   revalidatePath("/dashboard")
+  revalidatePath("/goals")
+  if ((target as any).goal_id) revalidatePath(`/goals/${(target as any).goal_id}`)
 }
 
 /**
