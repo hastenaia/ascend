@@ -219,20 +219,22 @@ where not exists (select 1 from public.stat_history h where h.user_id = p.user_i
 
 -- linked skills: leaf gets full awarded XP, parent branch gets half
 with txs as (
-  select x.user_id, x.amount, x.source_key, x.id tx_id
-  from public.xp_transactions x join public.quests q on q.id = x.quest_id
+  select x.user_id, x.amount, x.source_key, x.id tx_id, q.linked_skill
+  from public.xp_transactions x
+  join public.quests q on q.id = x.quest_id
   where x.source_type = 'quest' and q.linked_skill is not null
 ),
 targets as (
-  select user_id, linked_skill skill_id, amount, source_key || ':skill:self' sk, tx_id from txs
+  select user_id, linked_skill skill_id, amount delta, source_key || ':skill:self' sk, tx_id from txs
   union all
-  select t.user_id, p.id, ceil(t.amount * 0.5)::int, t.source_key || ':skill:parent', t.tx_id
-  from txs t join public.skills leaf on leaf.id = (select linked_skill from public.quests where id = t.tx_id)
-             join public.skills p on p.id = leaf.parent_id
+  select t.user_id, p.id, ceil(t.amount * 0.5)::int, t.source_key || ':skill:parent' sk, t.tx_id
+  from txs t
+  join public.skills leaf on leaf.id = t.linked_skill
+  join public.skills p on p.id = leaf.parent_id
   where ceil(t.amount * 0.5) > 0
 )
 insert into public.skill_xp_log (user_id, skill_id, delta, source_type, source_key)
-select distinct on (user_id, skill_id, source_key) user_id, skill_id, delta, 'quest', sk
+select user_id, skill_id, delta, 'quest', sk
 from targets
 where not exists (select 1 from public.skill_xp_log l where l.user_id = targets.user_id and l.skill_id = targets.skill_id and l.source_key = targets.sk);
 
@@ -390,17 +392,12 @@ begin
         from public.stats s where s.slug = r.stat_slug
         on conflict do nothing;
 
-        update public.user_stats us set value = sub.v, updated_at = now()
-        from (select coalesce(sum(delta), 0)::numeric v from public.stat_history
-              where user_id = v_user and stat_id = (select id from public.stats where slug = r.stat_slug)) sub
-        where us.user_id = v_user and us.stat_id = (select id from public.stats where slug = r.stat_slug);
-        if not found then
-          insert into public.user_stats (user_id, stat_id, value)
-          select v_user, s.id,
-            (select coalesce(sum(h.delta), 0)::numeric from public.stat_history h where h.user_id = v_user and h.stat_id = s.id)
-          from public.stats s where s.slug = r.stat_slug
-          on conflict (user_id, stat_id) do nothing;
-        end if;
+        -- Snapshot = ledger sum (authoritative, idempotent)
+        insert into public.user_stats (user_id, stat_id, value)
+        select v_user, s.id,
+          (select coalesce(sum(h.delta), 0)::numeric from public.stat_history h where h.user_id = v_user and h.stat_id = s.id)
+        from public.stats s where s.slug = r.stat_slug
+        on conflict (user_id, stat_id) do update set value = excluded.value, updated_at = now();
       end if;
     end loop;
 
@@ -417,19 +414,13 @@ begin
         on conflict do nothing;
       end if;
 
-      update public.user_skills ukn set xp = sub.v, updated_at = now()
-      from (select skill_id, sum(delta)::int v from public.skill_xp_log
-            where user_id = v_user and skill_id in (v_quest.linked_skill, coalesce(v_parent, v_quest.linked_skill))
-            group by skill_id) sub
-      where ukn.user_id = v_user and ukn.skill_id = sub.skill_id;
-      if not found then
-        insert into public.user_skills (user_id, skill_id, xp)
-        select v_user, l.skill_id, l.v from
-          (select skill_id, sum(delta)::int v from public.skill_xp_log
-           where user_id = v_user and skill_id in (v_quest.linked_skill, coalesce(v_parent, v_quest.linked_skill))
-           group by skill_id) l
-        on conflict (user_id, skill_id) do update set xp = excluded.xp;
-      end if;
+      -- Snapshots = ledger sums (authoritative, idempotent, covers leaf + parent)
+      insert into public.user_skills (user_id, skill_id, xp)
+      select l.user_id, l.skill_id, l.v from
+        (select skill_id, sum(delta)::int v from public.skill_xp_log
+         where user_id = v_user and skill_id in (v_quest.linked_skill, coalesce(v_parent, v_quest.linked_skill))
+         group by skill_id) l
+      on conflict (user_id, skill_id) do update set xp = excluded.xp, updated_at = now();
     end if;
   end if;
 
