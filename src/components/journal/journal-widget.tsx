@@ -11,7 +11,7 @@ export function JournalWidget({ todays, streak }: { todays: JournalEntry | null;
     <Card className="sheen">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base"><NotebookPen className="size-4 text-primary" /> Daily Journal</CardTitle>
-        <CardDescription>{done ? "Today's reflection saved — edit anytime" : "2-minute reflection grows Mental & EQ and keeps streak"}</CardDescription>
+        <CardDescription>{done ? "Today's reflection saved — add another anytime" : "2-minute reflection grows Mental & EQ and keeps streak"}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {done ? (
@@ -27,7 +27,7 @@ export function JournalWidget({ todays, streak }: { todays: JournalEntry | null;
         )}
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Flame className="size-3 text-orange-500" /> {streak} day streak</span>
-          <Button asChild size="sm" className="ml-auto h-8 rounded-full"><Link href="/journal">{done ? "Edit journal" : "Write today"} <ArrowRight className="ml-1 size-3" /></Link></Button>
+          <Button asChild size="sm" className="ml-auto h-8 rounded-full"><Link href="/journal">{done ? "Write more" : "Write today"} <ArrowRight className="ml-1 size-3" /></Link></Button>
         </div>
       </CardContent>
     </Card>

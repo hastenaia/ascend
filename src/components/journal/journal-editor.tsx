@@ -13,7 +13,6 @@ import { MoodPicker } from "@/components/journal/mood-picker"
 import { TagInput } from "@/components/journal/tag-input"
 import { saveJournalEntry, createQuestFromJournal } from "@/lib/journal/actions"
 import type { Mood } from "@/lib/validations/journal"
-import type { JournalEntry } from "@/lib/journal/queries"
 
 const QUESTIONS = [
   { key: "learnings" as const, label: "What did you learn today?", placeholder: "One insight, skill, or surprise…" },
@@ -23,45 +22,24 @@ const QUESTIONS = [
 ]
 
 type Props = {
-  initial?: JournalEntry | null
   todayStr: string
   currentPhaseId?: string | null
   currentPhaseTitle?: string | null
   questOptions?: { id: string; title: string }[]
 }
 
-export function JournalEditor({ initial, todayStr, currentPhaseId, questOptions = [] }: Props) {
+const EMPTY_VALUES = { learnings: "", worked: "", didnt_work: "", change_plan: "", body: "" }
+
+export function JournalEditor({ todayStr, currentPhaseId, questOptions = [] }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const reduced = useReducedMotion()
-  const [values, setValues] = React.useState({
-    learnings: initial?.learnings ?? "",
-    worked: initial?.worked ?? "",
-    didnt_work: initial?.didnt_work ?? "",
-    change_plan: initial?.change_plan ?? "",
-    body: initial?.body ?? "",
-  })
-  const [mood, setMood] = React.useState<Mood | null>((initial?.mood as Mood | null) ?? null)
-  const [questId, setQuestId] = React.useState<string>(initial?.quest_id ?? searchParams.get("quest") ?? "")
-  const [tags, setTags] = React.useState<string[]>(initial?.tags ?? [])
+  const [values, setValues] = React.useState({ ...EMPTY_VALUES })
+  const [mood, setMood] = React.useState<Mood | null>(null)
+  const [questId, setQuestId] = React.useState<string>(searchParams.get("quest") ?? "")
+  const [tags, setTags] = React.useState<string[]>([])
   const [busy, setBusy] = React.useState(false)
-  const [showFree, setShowFree] = React.useState(!!initial?.body)
-
-  // Sync when initial changes (after save + refresh, history load) — intentionally mirrors server prop to local form
-  const initialKey = initial?.id ?? initial?.entry_date ?? ""
-  React.useEffect(() => {
-    setValues({
-      learnings: initial?.learnings ?? "",
-      worked: initial?.worked ?? "",
-      didnt_work: initial?.didnt_work ?? "",
-      change_plan: initial?.change_plan ?? "",
-      body: initial?.body ?? "",
-    })
-    setMood((initial?.mood as Mood | null) ?? null)
-    setQuestId(initial?.quest_id ?? searchParams.get("quest") ?? "")
-    setTags(initial?.tags ?? [])
-    setShowFree(!!initial?.body)
-  }, [initialKey, searchParams])
+  const [showFree, setShowFree] = React.useState(false)
 
   const hasContent = Object.values(values).some((v) => v.trim().length > 0)
 
@@ -77,13 +55,17 @@ export function JournalEditor({ initial, todayStr, currentPhaseId, questOptions 
         change_plan: values.change_plan || null,
         body: values.body || null,
         mood,
-        // Preserve original phase link on edit; only set current phase for new entries without one
-        phase_id: initial?.phase_id ?? currentPhaseId ?? null,
         quest_id: questId || null,
+        phase_id: currentPhaseId ?? null,
         tags: tags.length ? tags : null,
       } as never)
-      if (res.is_new && res.xp_awarded > 0) toast.success(`+${res.xp_awarded} XP · Mental & EQ grew`, { description: "Journal saved — streak +1" })
-      else toast.success("Journal saved", { description: res.is_new ? "Updated for today" : "Entry updated" })
+      if (res.xp_awarded > 0) toast.success(`+${res.xp_awarded} XP · Mental & EQ grew`, { description: "First entry of the day — streak +1" })
+      else toast.success("Entry added", { description: "Saved to your journal history" })
+      setValues({ ...EMPTY_VALUES })
+      setMood(null)
+      setTags([])
+      setQuestId("")
+      setShowFree(false)
       router.refresh()
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Could not save")
@@ -117,7 +99,7 @@ export function JournalEditor({ initial, todayStr, currentPhaseId, questOptions 
           <span className="flex size-8 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm"><NotebookPen className="size-4" /></span>
           <div>
             <p className="text-sm font-semibold tracking-tight">Daily Journal</p>
-            <p className="flex items-center gap-1 text-xs text-muted-foreground"><CalendarDays className="size-3" /> {todayStr} {initial ? "· editing" : "· today"}</p>
+            <p className="flex items-center gap-1 text-xs text-muted-foreground"><CalendarDays className="size-3" /> {todayStr} · today · add freely</p>
           </div>
         </div>
         <span className="hidden sm:inline-flex items-center gap-1 rounded-full border bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold text-amber-700 dark:text-amber-300"><Zap className="size-3" /> +12 XP · Mental 70% EQ 30%</span>
@@ -167,12 +149,12 @@ export function JournalEditor({ initial, todayStr, currentPhaseId, questOptions 
       </div>
 
       <div className="mt-5 flex flex-wrap gap-2">
-        <Button onClick={save} disabled={!hasContent || busy} className="h-10 rounded-xl px-5 font-semibold"><Save className="mr-1 size-4" /> {busy ? "Saving…" : initial ? "Update journal" : "Save journal"}</Button>
+        <Button onClick={save} disabled={!hasContent || busy} className="h-10 rounded-xl px-5 font-semibold"><Save className="mr-1 size-4" /> {busy ? "Saving…" : "Save journal"}</Button>
         <Button variant="outline" onClick={createQuest} disabled={!values.change_plan.trim() || busy} className="h-10 rounded-xl">
           <Sparkles className="mr-1 size-4" /> Create quest from plan <ArrowRight className="ml-1 size-3" />
         </Button>
       </div>
-      <p className="mt-2 text-[11px] text-muted-foreground">Connected: journaling grows Mental/EQ, counts toward momentum recovery, and feeds your coach. One entry per day — edits update today.</p>
+      <p className="mt-2 text-[11px] text-muted-foreground">Connected: journaling grows Mental/EQ, counts toward momentum recovery, and feeds your coach. Add as many entries a day as you like — the first one earns +12 XP.</p>
     </div>
   )
 }

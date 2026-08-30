@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { PageTransition } from "@/components/feedback/page-transition"
 import { getCurrentPhase } from "@/lib/phases/queries"
 import { getActiveQuests } from "@/lib/quests/queries"
-import { getTodaysJournal, getJournalHistory, getJournalStreak, getJournalWithMeta, todayDateString } from "@/lib/journal/queries"
+import { getJournalHistory, getJournalStreak, getJournalWithMeta, todayDateString } from "@/lib/journal/queries"
 import { JournalEditor } from "@/components/journal/journal-editor"
 import { JournalHistory } from "@/components/journal/journal-history"
 import { JournalStreak } from "@/components/journal/journal-streak"
@@ -24,9 +24,8 @@ export default async function JournalPage() {
     )
   }
 
-  const [current, todays, history, streak] = await Promise.all([
+  const [current, history, streak] = await Promise.all([
     getCurrentPhase(supabase, user.id).catch(() => null),
-    getTodaysJournal(supabase, user.id).catch(() => null),
     getJournalHistory(supabase, user.id, 30).catch(() => []),
     getJournalStreak(supabase, user.id).catch(() => ({ streak: 0, count: 0 })),
   ])
@@ -46,7 +45,6 @@ export default async function JournalPage() {
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <JournalEditor
-              initial={todays}
               todayStr={todayDateString()}
               currentPhaseId={current?.id ?? null}
               currentPhaseTitle={current ? current.title : null}

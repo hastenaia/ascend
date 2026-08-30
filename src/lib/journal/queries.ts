@@ -32,6 +32,8 @@ export async function getTodaysJournal(supabase: SupabaseClient, userId: string)
     .select("id,entry_date,body,learnings,worked,didnt_work,change_plan,mood,tags,phase_id,quest_id,created_at,updated_at")
     .eq("user_id", userId)
     .eq("entry_date", today)
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle()
   return (data as JournalEntry | null) ?? null
 }
@@ -43,6 +45,7 @@ export async function getJournalHistory(supabase: SupabaseClient, userId: string
     .eq("user_id", userId)
     .not("entry_date", "is", null)
     .order("entry_date", { ascending: false })
+    .order("created_at", { ascending: false })
     .limit(limit)
   return (data as JournalEntry[] | null) ?? []
 }
