@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createQuestSchema, clampXpForDifficulty, type CreateQuestInput } from "@/lib/validations/quest"
+import { validateAdaptationProposal, type AdaptQuestProposal, type AdaptSession } from "@/lib/quests/adapt"
 import type { CompleteQuestResult } from "@/types/database"
 
 function mustUserId(user: { id: string } | null): string {
@@ -140,9 +141,10 @@ function revalidateQuestPaths(): void {
 }
 
 /**
- * Postpone a quest: records the postpone honestly (count + timestamp) and, for
- * one-time quests, pushes the due date forward by `days`. Recurring quests are
- * still governed by their recurrence window, so only the behavior marker is set.
+ * Postpone a quest: records the postpone via the quest_behavior_events RPC
+ * (counter + history event atomically) and, for one-time quests, pushes the
+ * due date forward by `days`. Recurring quests are still governed by their
+ * recurrence window, so only the behavior marker/event is recorded.
  */
 export async function postponeQuestAction(questId: string, days = 1): Promise<{ ok: true; postponed_count: number }> {
   const supabase = await createClient()
@@ -169,23 +171,31 @@ export async function postponeQuestAction(questId: string, days = 1): Promise<{ 
     due_date = shifted.toISOString().slice(0, 10)
   }
 
-  const { data: updated, error } = await supabase
-    .from("quests")
-    .update({ postponed_count: (quest.postponed_count ?? 0) + 1, last_postponed_at: new Date().toISOString(), due_date })
-    .eq("id", questId)
-    .eq("user_id", userId)
-    .select("postponed_count")
-    .single()
-  if (error) throw new Error(error.message)
+  const { data: rpc, error: rpcErr } = await supabase.rpc("record_quest_behavior", {
+    p_quest_id: questId,
+    p_kind: "postpone",
+    p_meta: {
+      days: d,
+      previous_due_date: quest.due_date,
+      next_due_date: due_date,
+    },
+  })
+  if (rpcErr || (rpc as { ok?: boolean } | null)?.ok !== true) throw new Error(rpcErr?.message ?? "record_quest_behavior_failed")
+
+  // One-time quests also visibly reschedule the due date.
+  if (quest.recurrence === "none" && due_date !== quest.due_date) {
+    const { error } = await supabase.from("quests").update({ due_date }).eq("id", questId).eq("user_id", userId)
+    if (error) throw new Error(error.message)
+  }
 
   revalidateQuestPaths()
-  return { ok: true, postponed_count: updated?.postponed_count ?? 0 }
+  return { ok: true, postponed_count: (quest.postponed_count ?? 0) + 1 }
 }
 
 /**
- * Skip a quest: records the skip honestly (count + timestamp) without awarding
- * XP or altering recurring due logic. The pattern engine reads these markers to
- * detect avoidance (e.g. repeatedly postponing the same difficulty).
+ * Skip a quest: records the skip via the quest_behavior_events RPC (counter +
+ * history event atomically) without awarding XP or altering recurring due
+ * logic. The pattern engine reads these markers to detect avoidance.
  */
 export async function skipQuestAction(questId: string): Promise<{ ok: true; skipped_count: number }> {
   const supabase = await createClient()
@@ -203,17 +213,15 @@ export async function skipQuestAction(questId: string): Promise<{ ok: true; skip
     .maybeSingle()
   if (!quest) throw new Error("Quest not found or not active")
 
-  const { data: updated, error } = await supabase
-    .from("quests")
-    .update({ skipped_count: (quest.skipped_count ?? 0) + 1, last_skipped_at: new Date().toISOString() })
-    .eq("id", questId)
-    .eq("user_id", userId)
-    .select("skipped_count")
-    .single()
-  if (error) throw new Error(error.message)
+  const { data: rpc, error: rpcErr } = await supabase.rpc("record_quest_behavior", {
+    p_quest_id: questId,
+    p_kind: "skip",
+    p_meta: {},
+  })
+  if (rpcErr || (rpc as { ok?: boolean } | null)?.ok !== true) throw new Error(rpcErr?.message ?? "record_quest_behavior_failed")
 
   revalidateQuestPaths()
-  return { ok: true, skipped_count: updated?.skipped_count ?? 0 }
+  return { ok: true, skipped_count: (quest.skipped_count ?? 0) + 1 }
 }
 
 /** Record evidence of growth on a quest you own (active or completed). */
@@ -233,6 +241,73 @@ export async function setQuestEvidenceAction(questId: string, evidence: string):
     .eq("user_id", userId)
   if (error) throw new Error(error.message)
 
+  if (trimmed !== "") {
+    const { data: rpc, error: rpcErr } = await supabase.rpc("record_quest_behavior", {
+      p_quest_id: questId,
+      p_kind: "evidence",
+      p_meta: { length: trimmed.length },
+    })
+    if (rpcErr || (rpc as { ok?: boolean } | null)?.ok !== true) throw new Error(rpcErr?.message ?? "record_quest_behavior_failed")
+  }
+
   revalidateQuestPaths()
   return { ok: true }
+}
+
+/**
+ * Apply a coach-recommended quest adaptation. The proposal is re-validated
+ * SERVER-SIDE (ownership + Zod + XP band clamp + no-op prevention) and the
+ * original difficulty is preserved in `adapted_from_difficulty` (set once).
+ * The change is also recorded as an `adapt` behavior event for history +
+ * weekly attribution. Never trusts AI output or client payloads directly.
+ */
+export async function applyQuestAdaptationAction(
+  questId: string,
+  proposal: AdaptQuestProposal,
+): Promise<{ ok: true; changes: AdaptSession }> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const userId = mustUserId(user)
+
+  const { data: quest } = await supabase
+    .from("quests")
+    .select("id,user_id,status,title,difficulty,xp_reward,evidence,adapted_from_difficulty")
+    .eq("id", questId)
+    .eq("user_id", userId)
+    .maybeSingle()
+  if (!quest || quest.status !== "active") throw new Error("Quest not found or not active")
+
+  const validated = validateAdaptationProposal({ userId, quest }, proposal)
+  if (!validated.ok) throw new Error(validated.error)
+
+  const { changes } = validated
+  const update: Record<string, string | number | null> = {
+    difficulty: changes.difficulty,
+    xp_reward: changes.xp_reward,
+    adapted_from_difficulty: changes.adapted_from_difficulty,
+  }
+  if (changes.title !== undefined) update.title = changes.title
+  if (changes.evidence !== undefined) update.evidence = changes.evidence
+
+  const { error } = await supabase.from("quests").update(update).eq("id", questId).eq("user_id", userId)
+  if (error) throw new Error(error.message)
+
+  const { data: rpc, error: rpcErr } = await supabase.rpc("record_quest_behavior", {
+    p_quest_id: questId,
+    p_kind: "adapt",
+    p_meta: {
+      from_difficulty: quest.difficulty,
+      to_difficulty: changes.difficulty,
+      from_xp: quest.xp_reward,
+      to_xp: changes.xp_reward,
+      title_changed: changes.title !== undefined,
+      reason: changes.reason ?? null,
+    },
+  })
+  if (rpcErr || (rpc as { ok?: boolean } | null)?.ok !== true) throw new Error(rpcErr?.message ?? "record_quest_behavior_failed")
+
+  revalidateQuestPaths()
+  return { ok: true, changes }
 }

@@ -1,13 +1,16 @@
 "use client"
 import * as React from "react"
-import { Clock, Calendar, Repeat, Zap, Trash2, Target, Sparkles, Save, SkipForward, CalendarClock } from "lucide-react"
+import { Clock, Calendar, Repeat, Zap, Trash2, Target, Sparkles, Save, SkipForward, CalendarClock, Wand2, Loader2 } from "lucide-react"
 import Link from "next/link"
+import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { difficultyStyles } from "@/components/quests/quest-card"
+import { applyQuestAdaptationAction } from "@/lib/quests/actions"
+import type { AdaptQuestProposal, AdaptSession } from "@/lib/quests/adapt"
 import type { QuestRow } from "@/lib/quests/queries"
 
 type Props = {
@@ -19,6 +22,7 @@ type Props = {
   onPostpone?: (quest: QuestRow) => void
   onSkip?: (quest: QuestRow) => void
   onSaveEvidence?: (quest: QuestRow, evidence: string) => void
+  onAdapted?: (changes: AdaptSession) => void
   busy?: boolean
   milestoneTitle?: string | null
   skillName?: string | null
@@ -35,19 +39,66 @@ function Row({ icon: Icon, label, value }: { icon: React.ElementType; label: str
   )
 }
 
-export function QuestDetail({ quest, open, onOpenChange, onComplete, onDelete, onPostpone, onSkip, onSaveEvidence, busy, milestoneTitle, skillName }: Props) {
+export function QuestDetail({ quest, open, onOpenChange, onComplete, onDelete, onPostpone, onSkip, onSaveEvidence, onAdapted, busy, milestoneTitle, skillName }: Props) {
   const [evidence, setEvidence] = React.useState("")
   const [evidenceQuestId, setEvidenceQuestId] = React.useState<string | null>(null)
+  const [adaptState, setAdaptState] = React.useState<"idle" | "loading" | "ready">("idle")
+  const [adaptProposal, setAdaptProposal] = React.useState<AdaptQuestProposal | null>(null)
+  const [adaptError, setAdaptError] = React.useState<string | null>(null)
+  const [adaptApplying, setAdaptApplying] = React.useState(false)
 
-  // Reset evidence state when a different quest is opened (render-phase adjustment)
+  // Reset local state when a different quest is opened (render-phase adjustment)
   if (quest && quest.id !== evidenceQuestId) {
     setEvidenceQuestId(quest.id)
     setEvidence(quest.evidence ?? "")
+    setAdaptState("idle")
+    setAdaptProposal(null)
+    setAdaptError(null)
   }
   const evidenceDirty = evidence !== (quest?.evidence ?? "")
 
   if (!quest) return null
   const done = quest.status === "completed"
+
+  async function fetchRescale() {
+    if (!quest) return
+    setAdaptState("loading")
+    setAdaptError(null)
+    try {
+      const res = await fetch("/api/coach/suggest-adapt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quest_id: quest.id }),
+      })
+      const json = (await res.json()) as { ok?: boolean; proposal?: AdaptQuestProposal }
+      if (!json.ok || !json.proposal) {
+        setAdaptError("The coach couldn't suggest an adaptation right now.")
+        setAdaptState("idle")
+        return
+      }
+      setAdaptProposal(json.proposal)
+      setAdaptState("ready")
+    } catch {
+      setAdaptError("Could not reach the coach. Try again.")
+      setAdaptState("idle")
+    }
+  }
+
+  async function applyRescale() {
+    if (!quest || !adaptProposal) return
+    setAdaptApplying(true)
+    try {
+      const result = await applyQuestAdaptationAction(quest.id, adaptProposal)
+      toast.success("Quest rescaled", { description: `Now ${result.changes.difficulty} · +${result.changes.xp_reward} XP` })
+      setAdaptState("idle")
+      setAdaptProposal(null)
+      setAdaptApplying(false)
+      onAdapted?.(result.changes)
+    } catch (e: unknown) {
+      setAdaptApplying(false)
+      toast.error(e instanceof Error ? e.message : "Could not apply the adaptation")
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -130,6 +181,57 @@ export function QuestDetail({ quest, open, onOpenChange, onComplete, onDelete, o
           </div>
         )}
 
+        {!done && (adaptState === "loading" || adaptState === "ready" || adaptApplying || adaptError) && (
+          <div className="rounded-xl border border-violet-500/25 bg-violet-500/[0.06] p-3">
+            {adaptState === "loading" && (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" /> Coaches are reviewing this quest…
+              </p>
+            )}
+            {adaptError && <p className="text-xs text-destructive">{adaptError}</p>}
+            {adaptProposal && !adaptApplying && (
+              <div className="space-y-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-violet-600">Coach proposal</p>
+                <div className="space-y-1 rounded-lg border bg-background p-2.5 text-xs">
+                  <p>
+                    <span className="text-muted-foreground">Difficulty</span>{" "}
+                    <span className={`font-semibold capitalize ${difficultyStyles[quest.difficulty]}`}>{quest.difficulty}</span>
+                    <span className="mx-1 text-muted-foreground">→</span>
+                    <span className={`font-semibold capitalize ${difficultyStyles[adaptProposal.difficulty]}`}>{adaptProposal.difficulty}</span>
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">XP</span> {quest.xp_reward} → <b>{adaptProposal.xp_reward}</b>
+                  </p>
+                  {adaptProposal.title && adaptProposal.title !== quest.title && <p className="text-muted-foreground">New title: {adaptProposal.title}</p>}
+                  {adaptProposal.evidence && <p className="text-muted-foreground">Evidence: {adaptProposal.evidence}</p>}
+                  {adaptProposal.reason && <p className="italic text-muted-foreground">&ldquo;{adaptProposal.reason}&rdquo;</p>}
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={applyRescale}>
+                    Apply
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setAdaptState("idle")
+                      setAdaptProposal(null)
+                      setAdaptError(null)
+                    }}
+                  >
+                    Dismiss
+                  </Button>
+                </div>
+              </div>
+            )}
+            {adaptApplying && (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" /> Applying…
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-wrap gap-2">
           {!done && onDelete && (
             <Button
@@ -169,6 +271,20 @@ export function QuestDetail({ quest, open, onOpenChange, onComplete, onDelete, o
               }}
             >
               <SkipForward className="size-3.5" /> Skip
+            </Button>
+          )}
+          {!done && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy || adaptState === "loading" || adaptState === "ready"}
+              onClick={(e) => {
+                e.stopPropagation()
+                fetchRescale()
+              }}
+              title="Ask the coach to propose a smaller, more achievable version of this quest"
+            >
+              <Wand2 className="size-3.5" /> Rescale with coach
             </Button>
           )}
           {!done && onComplete && (

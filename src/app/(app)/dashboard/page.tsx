@@ -19,6 +19,7 @@ import { InsightList } from "@/components/analytics/insight-list"
 import { CharacterProgress } from "@/components/dashboard/character-progress"
 import { JournalWidget } from "@/components/journal/journal-widget"
 import { getTodaysJournal, getJournalStreak } from "@/lib/journal/queries"
+import { recommendNextActionForUser } from "@/lib/coach/next-action"
 
 export const metadata = { title: "Dashboard — Ascend" }
 export const dynamic = "force-dynamic"
@@ -45,7 +46,7 @@ export default async function DashboardPage() {
     )
   }
 
-  const [data, profileRes, statSummaries, momentumSummary, topInsights, todaysJournal, journalStreak] = await Promise.all([
+  const [data, profileRes, statSummaries, momentumSummary, topInsights, todaysJournal, journalStreak, nextAction] = await Promise.all([
     getDashboardData(supabase, user.id).catch(() => null),
     supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
     getStatsOverview(supabase).catch(() => []),
@@ -53,6 +54,7 @@ export default async function DashboardPage() {
     getQuickInsights(supabase, user.id).catch(() => []),
     getTodaysJournal(supabase, user.id).catch(() => null),
     getJournalStreak(supabase, user.id).catch(() => ({ streak: 0, count: 0 })),
+    recommendNextActionForUser(supabase, user.id).catch(() => ({ action: null, text: "" })),
   ])
 
   const name = ((profileRes.data as { display_name: string | null } | null)?.display_name ?? "").trim() || null
@@ -212,24 +214,36 @@ export default async function DashboardPage() {
                   </Card>
                 )}
 
-                {/* TERTIARY — Coach teaser */}
+                {/* TERTIARY — Coach recommendation (deterministic next best action) */}
                 <Card className="border-primary/15 bg-gradient-to-br from-primary/[0.06] via-violet-500/[0.05] to-transparent">
                   <CardHeader className="pb-3">
                     <CardTitle className="flex items-center gap-2 text-base">
-                      <Bot className="size-4 text-primary" /> AI Insight
+                      <Bot className="size-4 text-primary" /> Coach Recommendation
                     </CardTitle>
-                    <CardDescription>Guidance grounded in your actual progress.</CardDescription>
+                    <CardDescription>Picked from your real open quests — not generic advice.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="rounded-xl border bg-card p-4">
-                      <p className="text-sm font-medium">Your AI Coach is warming up</p>
-                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                        The coach will reflect on your phase, momentum, and quests — no generic advice.
-                      </p>
-                    </div>
+                    {nextAction.action ? (
+                      <div className="rounded-xl border bg-card p-4">
+                        <p className="text-sm font-semibold leading-snug">{nextAction.action.headline}</p>
+                        {nextAction.action.dueLabel && <p className="mt-0.5 text-[11px] text-muted-foreground">{nextAction.action.dueLabel}</p>}
+                        {nextAction.action.why.slice(0, 2).map((w, i) => (
+                          <p key={i} className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                            · {w}
+                          </p>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border bg-card p-4">
+                        <p className="text-sm font-medium">No open quests right now</p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                          Create a quest and the coach will surface the highest-value next step for you.
+                        </p>
+                      </div>
+                    )}
                     <Separator />
                     <Button variant="outline" size="sm" className="w-full" asChild>
-                      <Link href="/coach">Meet your coach</Link>
+                      <Link href="/coach">Chat with your coach</Link>
                     </Button>
                   </CardContent>
                 </Card>

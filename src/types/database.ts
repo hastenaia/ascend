@@ -343,6 +343,32 @@ export type Database = {
           updated_at?: string
         }
       }
+      quest_behavior_events: {
+        Row: {
+          id: string
+          user_id: string
+          quest_id: string
+          kind: "postpone" | "skip" | "adapt" | "evidence"
+          occurred_at: string
+          meta: Json
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          quest_id: string
+          kind: "postpone" | "skip" | "adapt" | "evidence"
+          occurred_at?: string
+          meta?: Json
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          quest_id?: string
+          kind?: "postpone" | "skip" | "adapt" | "evidence"
+          occurred_at?: string
+          meta?: Json
+        }
+      }
       xp_transactions: {
         Row: {
           id: string

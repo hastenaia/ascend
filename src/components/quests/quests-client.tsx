@@ -15,6 +15,7 @@ import { QuestCompletionAnimation } from "@/components/quests/quest-completion-a
 import { QuestCreateDialog } from "@/components/quests/quest-create-dialog"
 import { completeQuestAction, deleteQuestAction, postponeQuestAction, setQuestEvidenceAction, skipQuestAction } from "@/lib/quests/actions"
 import { announceUnlockedAchievements } from "@/lib/achievements/events"
+import type { AdaptSession } from "@/lib/quests/adapt"
 import type { QuestRow } from "@/lib/quests/queries"
 import type { LevelProgress as LevelProgressType } from "@/lib/levels"
 
@@ -129,6 +130,22 @@ export function QuestsClient({ activeQuests, completedQuests, level, todaysCount
     } finally {
       setBusyId(null)
     }
+  }
+
+  function handleAdapted(changes: AdaptSession) {
+    setDetail((d) =>
+      d
+        ? {
+            ...d,
+            title: changes.title ?? d.title,
+            difficulty: changes.difficulty,
+            xp_reward: changes.xp_reward,
+            adapted_from_difficulty: changes.adapted_from_difficulty,
+            evidence: changes.evidence ?? d.evidence,
+          }
+        : d,
+    )
+    startTransition(() => router.refresh())
   }
 
   const milestoneTitleFor = (id: string | null) => milestones.find((m) => m.id === id)?.title ?? null
@@ -247,6 +264,7 @@ export function QuestsClient({ activeQuests, completedQuests, level, todaysCount
         onPostpone={handlePostpone}
         onSkip={handleSkip}
         onSaveEvidence={handleSaveEvidence}
+        onAdapted={handleAdapted}
         busy={busyId !== null}
         milestoneTitle={milestoneTitleFor(detail?.milestone_id ?? null)}
         skillName={skills.find((s) => s.id === detail?.linked_skill)?.name ?? null}

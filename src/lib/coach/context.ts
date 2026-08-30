@@ -1,12 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { computeMomentumScore, momentumTiers, type MomentumDayRow } from "@/lib/momentum/model"
 import { gatherBehaviorFacts, type BehaviorFacts } from "@/lib/coach/behavior"
+import { COACH_STYLES, type CoachStyle } from "@/lib/coach/style"
 
 export type CoachContext = {
   text: string
   activePhaseId: string | null
   activeGoalId: string | null
   behavior: BehaviorFacts
+  coachStyle: CoachStyle | null
 }
 
 function clip(s: string | null | undefined, n = 160): string {
@@ -165,11 +167,15 @@ export async function gatherCoachContext(supabase: SupabaseClient, userId: strin
     lines.push(`RECENT REFLECTIONS/JOURNAL: ${fmt}`)
   }
 
+  const refStyle = profileRow?.preferences?.coachStyle as CoachStyle | undefined
+  const coachStyle: CoachStyle | null = COACH_STYLES.includes(refStyle as never) ? (refStyle as CoachStyle) : null
+
   return {
     text: lines.join("\n") || "New user — no activity yet.",
     activePhaseId: activePhase?.id ?? null,
     activeGoalId: goals.find((g) => g.status === "active")?.id ?? null,
     behavior: behavior.facts,
+    coachStyle,
   }
 }
 

@@ -3,6 +3,9 @@ import { createClient } from "@/lib/supabase/server"
 import { PageTransition } from "@/components/feedback/page-transition"
 import { CoachChat } from "@/components/coach/coach-chat"
 import { InsightCards } from "@/components/coach/insight-cards"
+import { NextActionCard } from "@/components/coach/next-action-card"
+import { PatternInsights } from "@/components/coach/pattern-insights"
+import { WeeklyReviewCard } from "@/components/coach/weekly-review-card"
 import { GeneratePhaseFlow } from "@/components/coach/generate-phase-flow"
 import { GenerateQuestFlow } from "@/components/coach/generate-quest-flow"
 import { WeeklyPlanFlow } from "@/components/coach/weekly-plan-flow"
@@ -10,6 +13,8 @@ import { getCurrentPhase } from "@/lib/phases/queries"
 import { getMomentumSummary } from "@/lib/momentum/queries"
 import { getGoalsOverview } from "@/lib/goals/queries"
 import { loadHistory } from "@/lib/coach/history"
+import { recommendNextActionForUser } from "@/lib/coach/next-action"
+import { detectPatternsForUser } from "@/lib/patterns/gather"
 
 export const metadata = { title: "AI Coach — Ascend" }
 export const dynamic = "force-dynamic"
@@ -28,13 +33,15 @@ export default async function CoachPage() {
     )
   }
 
-  const [phase, momentum, goals, history, openRes, doneRes] = await Promise.all([
+  const [phase, momentum, goals, history, openRes, doneRes, nextAction, patterns] = await Promise.all([
     getCurrentPhase(supabase, user.id).catch(() => null),
     getMomentumSummary(supabase, user.id).catch(() => null),
     getGoalsOverview(supabase, user.id).catch(() => []),
     loadHistory(supabase, user.id, 12).catch(() => []),
     supabase.from("quests").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "active"),
     supabase.from("quests").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "completed"),
+    recommendNextActionForUser(supabase, user.id).catch(() => ({ action: null, text: "" })),
+    detectPatternsForUser(supabase, user.id).catch(() => ({ patterns: [], text: "" })),
   ])
 
   return (
@@ -59,6 +66,12 @@ export default async function CoachPage() {
           openQuests={openRes.count ?? 0}
           completedQuests={doneRes.count ?? 0}
         />
+
+        <div className="grid gap-5 lg:grid-cols-3">
+          <NextActionCard action={nextAction.action} questHref="/quests" />
+          <PatternInsights patterns={patterns.patterns} />
+          <WeeklyReviewCard />
+        </div>
 
         <CoachChat initialHistory={history} />
 

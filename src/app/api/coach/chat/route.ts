@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server"
 import { callModel, type ChatMessage } from "@/lib/coach/provider"
 import { buildSystemPrompt } from "@/lib/coach/prompt"
 import { gatherCoachContext } from "@/lib/coach/context"
+import { coachStyleInstructions } from "@/lib/coach/style"
+import { detectPatternsForUser } from "@/lib/patterns/gather"
 import { appendMessage, loadHistory } from "@/lib/coach/history"
 import { rateLimited } from "@/lib/coach/ratelimit"
 
@@ -36,8 +38,12 @@ export async function POST(req: Request) {
 
   const [ctx, history] = await Promise.all([gatherCoachContext(supabase, user.id), loadHistory(supabase, user.id)])
 
+  // Deterministic pattern insights (when present) — fed to the model as ground truth.
+  const patternText = (await detectPatternsForUser(supabase, user.id)).text
+  const contextText = patternText ? `${ctx.text}\n${patternText}` : ctx.text
+
   const messages: ChatMessage[] = [
-    buildSystemPrompt(ctx.text),
+    buildSystemPrompt(contextText, coachStyleInstructions(ctx.coachStyle)),
     ...history.slice(-20),
     { role: "user", content: message },
   ]
