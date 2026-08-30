@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 import { COACH_UNAVAILABLE_MESSAGE, SUGGESTED_PROMPTS, type CoachMsg } from "@/components/coach/types"
 import { Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 
 export function CoachChat({ initialHistory }: { initialHistory: CoachMsg[] }) {
   const reduced = useReducedMotion()
@@ -37,21 +38,58 @@ export function CoachChat({ initialHistory }: { initialHistory: CoachMsg[] }) {
     setInput("")
     setMessages((m) => [...m, { role: "user", content: message }, { role: "assistant", content: "…" }])
     setLoading(true)
+    // Preserve contract: try Supabase Edge Function ai-coach first, fallback to Next.js route
+    const tryEdge = async (): Promise<{ ok?: boolean; reply?: string; response?: string; error?: string } | null> => {
+      try {
+        const supabase = createSupabaseClient()
+        const { data, error } = await supabase.functions.invoke("ai-coach", { body: { message } })
+        if (error) return null
+        return data as { ok?: boolean; reply?: string; response?: string; error?: string }
+      } catch {
+        return null
+      }
+    }
+    const tryNext = async (): Promise<{ ok?: boolean; reply?: string; error?: string } | null> => {
+      try {
+        const res = await fetch("/api/coach/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+        })
+        return (await res.json()) as { ok?: boolean; reply?: string; error?: string }
+      } catch {
+        return null
+      }
+    }
     try {
-      const res = await fetch("/api/coach/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
-      })
-      const json = (await res.json()) as { ok?: boolean; reply?: string; error?: string }
+      let json = await tryEdge()
+      // If Edge Function not deployed or returns no reply field, fallback to Next.js
+      if (!json || (json.ok === undefined && json.reply === undefined && json.response === undefined && json.error === undefined)) {
+        json = await tryNext()
+      } else if (json.response && !json.reply) {
+        // Edge Function may return {response: "..."} — normalize to {reply}
+        json = { ok: json.ok ?? true, reply: json.response, error: json.error } as typeof json
+      }
+      // If still null, show unavailable
+      if (!json) {
+        setMessages((m) => {
+          const next = [...m]
+          const placeholder = next[next.length - 1]
+          if (placeholder?.role === "assistant") next[next.length - 1] = { role: "assistant", content: COACH_UNAVAILABLE_MESSAGE }
+          return next
+        })
+        return
+      }
+      const anyJson = json as { ok?: boolean; reply?: string; response?: string; error?: string }
+      const reply = anyJson.reply ?? anyJson.response
       setMessages((m) => {
         const next = [...m]
         const placeholder = next[next.length - 1]
-        if (json.ok && json.reply) {
-          if (placeholder?.role === "assistant") next[next.length - 1] = { role: "assistant", content: json.reply }
-          else next.push({ role: "assistant", content: json.reply })
+        if (anyJson.ok && reply) {
+          if (placeholder?.role === "assistant") next[next.length - 1] = { role: "assistant", content: reply }
+          else next.push({ role: "assistant", content: reply })
         } else {
-          const note = json.error === "rate_limited" ? "Too many requests — take a short break." : COACH_UNAVAILABLE_MESSAGE
+          const note = anyJson.error === "rate_limited" ? "Too many requests — take a short break." : COACH_UNAVAILABLE_MESSAGE
           if (placeholder?.role === "assistant") next[next.length - 1] = { role: "assistant", content: note, unavailableFlag: true } as CoachMsg & { unavailableFlag?: boolean }
           else next.push({ role: "assistant", content: note })
         }

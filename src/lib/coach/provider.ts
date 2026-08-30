@@ -1,11 +1,11 @@
 /**
  * AI Coach provider — server-side only. NEVER import from client components.
  *
- * Zero-dependency OpenAI-compatible chat client. Works with OpenAI,
- * OpenRouter, Together, LM Studio, or any compatible gateway:
- *   AI_API_KEY   (or OPENAI_API_KEY)  — required; without it the coach is OFF
- *   AI_BASE_URL  (default https://api.openai.com/v1)
- *   AI_MODEL     (default gpt-4o-mini)
+ * Prefers Google Gemini (GEMINI_API_KEY) via generateContent REST.
+ * Falls back to OpenAI-compatible gateway (AI_API_KEY / OPENAI_API_KEY) for legacy.
+ *   GEMINI_API_KEY — preferred; without any key the coach is OFF
+ *   GEMINI_MODEL   — default gemini-2.5-flash
+ *   AI_API_KEY / OPENAI_API_KEY — legacy fallback
  *
  * If no key is configured or the upstream call fails, callers receive
  * { ok:false, unavailable:true } and MUST surface "AI Coach is currently
@@ -19,29 +19,64 @@ export type ModelResult =
   | { ok: false; unavailable: true; reason: "no_key" | "upstream_error" }
 
 export function coachConfigured(): boolean {
-  return !!(process.env.AI_API_KEY || process.env.OPENAI_API_KEY)
+  return !!(process.env.GEMINI_API_KEY || process.env.AI_API_KEY || process.env.OPENAI_API_KEY)
 }
 
-function baseUrl(): string {
+function geminiKey(): string | undefined {
+  return process.env.GEMINI_API_KEY
+}
+function legacyApiKey(): string | undefined {
+  return process.env.AI_API_KEY || process.env.OPENAI_API_KEY
+}
+function legacyBaseUrl(): string {
   return (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "")
 }
 
-function apiKey(): string | undefined {
-  return process.env.AI_API_KEY || process.env.OPENAI_API_KEY
-}
-
-export async function callModel(
-  messages: ChatMessage[],
-  opts: { maxTokens?: number; temperature?: number } = {}
-): Promise<ModelResult> {
-  const key = apiKey()
+async function callGemini(messages: ChatMessage[], opts: { maxTokens?: number; temperature?: number }): Promise<ModelResult> {
+  const key = geminiKey()
   if (!key) return { ok: false, unavailable: true, reason: "no_key" }
-
+  // Gemini generateContent: system instruction + contents (user/model)
+  const systemMsg = messages.find((m) => m.role === "system")
+  const contents = messages
+    .filter((m) => m.role !== "system")
+    .map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }))
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 30_000)
-
   try {
-    const res = await fetch(`${baseUrl()}/chat/completions`, {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(process.env.GEMINI_MODEL || "gemini-2.5-flash")}:generateContent?key=${encodeURIComponent(key)}`
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        system_instruction: systemMsg ? { parts: [{ text: systemMsg.content }] } : undefined,
+        contents,
+        generationConfig: { temperature: opts.temperature ?? 0.7, maxOutputTokens: opts.maxTokens ?? 700 },
+      }),
+      signal: controller.signal,
+    })
+    if (!res.ok) {
+      console.error("[coach] gemini upstream", res.status, (await res.text()).slice(0, 400))
+      return { ok: false, unavailable: true, reason: "upstream_error" }
+    }
+    const json = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
+    const text = json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("").trim() ?? ""
+    if (!text) return { ok: false, unavailable: true, reason: "upstream_error" }
+    return { ok: true, content: text }
+  } catch (e) {
+    console.error("[coach] gemini call failed", e instanceof Error ? e.message : e)
+    return { ok: false, unavailable: true, reason: "upstream_error" }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function callLegacy(messages: ChatMessage[], opts: { maxTokens?: number; temperature?: number }): Promise<ModelResult> {
+  const key = legacyApiKey()
+  if (!key) return { ok: false, unavailable: true, reason: "no_key" }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 30_000)
+  try {
+    const res = await fetch(`${legacyBaseUrl()}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify({
@@ -52,15 +87,11 @@ export async function callModel(
       }),
       signal: controller.signal,
     })
-
     if (!res.ok) {
       console.error("[coach] upstream error", res.status, (await res.text()).slice(0, 300))
       return { ok: false, unavailable: true, reason: "upstream_error" }
     }
-
-    const json = (await res.json()) as {
-      choices?: { message?: { content?: string } }[]
-    }
+    const json = (await res.json()) as { choices?: { message?: { content?: string } }[] }
     const content = json.choices?.[0]?.message?.content?.trim()
     if (!content) return { ok: false, unavailable: true, reason: "upstream_error" }
     return { ok: true, content }
@@ -70,6 +101,11 @@ export async function callModel(
   } finally {
     clearTimeout(timer)
   }
+}
+
+export async function callModel(messages: ChatMessage[], opts: { maxTokens?: number; temperature?: number } = {}): Promise<ModelResult> {
+  if (geminiKey()) return callGemini(messages, opts)
+  return callLegacy(messages, opts)
 }
 
 /** Extract a JSON object/array from a model response that may wrap it in prose or code fences */
