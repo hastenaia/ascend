@@ -44,21 +44,29 @@ export async function createQuestAction(raw: CreateQuestInput & { xp_reward: num
   }
 
   // Smooth fallback: if no parent at all, auto-attach to active/available phase
-  // Keeps the quests_parent constraint satisfied and makes "None" milestone feel intentional.
+  // After 0013 standalone is allowed, but attaching keeps character->phase link.
   if (!milestoneId && !phaseId) {
-    const { data: fallback } = await supabase
+    // Fix H4 ordering: text sort "available" > "active", so query active first explicitly
+    const { data: activePhase } = await supabase
       .from("phases")
       .select("id")
       .eq("user_id", userId)
-      .in("status", ["active", "available"])
-      .order("status", { ascending: false }) // active first
+      .eq("status", "active")
       .order("order_index", { ascending: true })
       .limit(1)
       .maybeSingle()
-    if (fallback?.id) phaseId = fallback.id as string
+    if (activePhase?.id) phaseId = activePhase.id as string
     else {
-      // No journey yet — give a friendly, actionable error instead of leaking Postgres constraint text
-      throw new Error("Start your journey first — create a phase to attach quests to.")
+      const { data: availablePhase } = await supabase
+        .from("phases")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("status", "available")
+        .order("order_index", { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      if (availablePhase?.id) phaseId = availablePhase.id as string
+      // else: standalone is now permitted (0013) — keep phaseId null so creation still succeeds
     }
   }
 
@@ -94,18 +102,21 @@ export async function createQuestAction(raw: CreateQuestInput & { xp_reward: num
     .single()
 
   if (error) {
-    // Translate low-level Postgres check violation into human copy
     if (error.message.includes("quests_parent") || error.message.includes("check constraint")) {
       throw new Error("Quest needs a phase or milestone — select one or start your journey.")
     }
     throw new Error(error.message)
   }
 
+  // Revalidate grouped routes correctly for Next 16 (app)/(app) grouping
   revalidatePath("/quests")
+  revalidatePath("/(app)/quests")
   revalidatePath("/dashboard")
+  revalidatePath("/(app)/dashboard")
   revalidatePath("/phase")
   revalidatePath("/stats")
   revalidatePath("/skills")
+  revalidatePath("/")
   return { id: inserted!.id }
 }
 
@@ -126,8 +137,12 @@ export async function completeQuestAction(questId: string): Promise<CompleteQues
   if (!result?.ok) throw new Error(result?.error ?? "completion_failed")
 
   revalidatePath("/quests")
+  revalidatePath("/(app)/quests")
   revalidatePath("/dashboard")
+  revalidatePath("/(app)/dashboard")
   revalidatePath("/phase")
+  revalidatePath("/stats")
+  revalidatePath("/skills")
   return result
 }
 
@@ -143,5 +158,8 @@ export async function deleteQuestAction(questId: string): Promise<void> {
   if (error) throw new Error(error.message)
 
   revalidatePath("/quests")
+  revalidatePath("/(app)/quests")
   revalidatePath("/dashboard")
+  revalidatePath("/(app)/dashboard")
+  revalidatePath("/stats")
 }

@@ -26,7 +26,7 @@ export function getIsoWeekKey(d = new Date()): string {
   return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`
 }
 
-/** A quest is "due today" when: daily recurring (not done today), weekly recurring (not done this week), or one-time with due_date <= today */
+/** A quest is "due today" when: daily recurring (not done today), weekly recurring (not done this week), or one-time with due_date <= today OR no due date (immediate) */
 export function questIsDueToday(
   quest: Pick<QuestRow, "recurrence" | "due_date" | "id">,
   ctx: { today?: string; completedQuestIdsToday?: Set<string>; weeklyCompletedQuestIds?: Set<string> }
@@ -34,7 +34,9 @@ export function questIsDueToday(
   const today = ctx.today ?? todayDateString()
   if (quest.recurrence === "daily") return !(ctx.completedQuestIdsToday?.has(quest.id) ?? false)
   if (quest.recurrence === "weekly") return !(ctx.weeklyCompletedQuestIds?.has(quest.id) ?? false)
-  return Boolean(quest.due_date && quest.due_date <= today)
+  // One-time: visible today if due today/overdue OR no due date (treat as immediate)
+  if (!quest.due_date) return true
+  return quest.due_date <= today
 }
 
 export async function getActiveQuests(supabase: SupabaseClient, userId: string): Promise<QuestRow[]> {
@@ -133,8 +135,10 @@ export async function getTodaysQuests(supabase: SupabaseClient, userId: string) 
       .map((r) => r.source_key.split(":")[1])
   )
 
-  const todays = quests.filter((q) => questIsDueToday(q, { today, completedQuestIdsToday: completedTodayIds, weeklyCompletedQuestIds: weeklyDoneIds }))
-  return { todays, completedTodayCount: completedToday.length }
+  const todaysRaw = quests.filter((q) => questIsDueToday(q, { today, completedQuestIdsToday: completedTodayIds, weeklyCompletedQuestIds: weeklyDoneIds }))
+  // Fallback: if nothing due today but active quests exist, show active as due (smooth empty-state)
+  const todays = todaysRaw.length > 0 ? todaysRaw : quests.length > 0 && quests.length <= 6 ? quests.slice(0, 6) : todaysRaw
+  return { todays, completedTodayCount: completedToday.length, allActive: quests }
 }
 
 export async function getQuestsPageData(supabase: SupabaseClient, userId: string) {

@@ -140,13 +140,18 @@ export function QuestsClient({ activeQuests, completedQuests, level, todaysCount
 
       <QuestFilters value={filters} onChange={setFilters} />
 
-      {/* List with smooth presence */}
-      <AnimatePresence mode="wait">
-        {isPending ? (
-          <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> Syncing quests…
+      {/* Pending shimmer — non-blocking, list stays visible for smoothness */}
+      <AnimatePresence>
+        {isPending && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground">
+            <Loader2 className="size-3 animate-spin" /> Syncing…
           </motion.div>
-        ) : visible.length > 0 ? (
+        )}
+      </AnimatePresence>
+
+      {/* List with smooth presence — never hidden by isPending */}
+      <AnimatePresence mode="wait">
+        {visible.length > 0 ? (
           <motion.div key="list" initial={reduced ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={reduced ? undefined : { opacity: 0 }} transition={{ duration: 0.22 }}>
             <QuestList
               quests={visible}
@@ -168,7 +173,7 @@ export function QuestsClient({ activeQuests, completedQuests, level, todaysCount
                 filters.status === "active"
                   ? currentPhaseId
                     ? "Create a quest or clear the filters. Quests linked to milestones advance your current phase — and on completion your character stats & skills grow automatically."
-                    : "Start your journey to create quests. Once you have a phase, quests attach to it and power your character."
+                    : "Standalone quests work immediately — they'll appear here and count toward your character once completed. Start a Journey to link quests to a phase for milestone progress."
                   : "Complete your first quest and it will appear here as proof of progress."
               }
               action={
@@ -181,7 +186,7 @@ export function QuestsClient({ activeQuests, completedQuests, level, todaysCount
             />
             {filters.status === "active" && visible.length === 0 && activeQuests.length > 0 && (
               <p className="mt-3 text-center text-xs text-muted-foreground">
-                <Sparkles className="mr-1 inline size-3 text-violet-500" /> {activeQuests.length} quest(s) hidden by filters
+                <Sparkles className="mr-1 inline size-3 text-violet-500" /> {activeQuests.length} quest(s) hidden by filters — try “all types” or clear search
               </p>
             )}
           </motion.div>
