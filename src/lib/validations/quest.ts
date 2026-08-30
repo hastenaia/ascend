@@ -31,12 +31,12 @@ export const createQuestSchema = z.object({
   category: z.enum(QUEST_CATEGORIES).default("general"),
   difficulty: z.enum(QUEST_DIFFICULTIES).default("medium"),
   xp_reward: z.number().int().min(5).max(500),
-  estimated_duration: z.preprocess(nanToNull, z.number().int().min(5).max(480).nullable()),
-  due_date: z.preprocess(emptyToNull, dateString.nullable()),
+  estimated_duration: z.preprocess(nanToNull, z.number().int().min(5).max(480).nullable().optional()),
+  due_date: z.preprocess(emptyToNull, dateString.nullable().optional()),
   recurrence: z.enum(RECURRENCES).default("none"),
-  phase_id: z.preprocess(emptyToNull, z.string().uuid().nullable()),
-  milestone_id: z.preprocess(emptyToNull, z.string().uuid().nullable()),
-  linked_skill: z.preprocess(emptyToNull, z.string().uuid().nullable()),
+  phase_id: z.preprocess(emptyToNull, z.string().uuid().nullable().optional()),
+  milestone_id: z.preprocess(emptyToNull, z.string().uuid().nullable().optional()),
+  linked_skill: z.preprocess(emptyToNull, z.string().uuid().nullable().optional()),
 })
 
 export type CreateQuestInput = z.infer<typeof createQuestSchema>
