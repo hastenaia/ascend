@@ -231,15 +231,15 @@ ${SAFETY_RULES}
 ${contextText}
 === END DATA ===`;
 
-  // Build Interactions API step_list: steps-based schema (not turn_list)
-  // Transform Ascend coach_messages → step_list: user_input / model_output with visible text only
-  const step_list: { type: string; content: string }[] = [];
+  // Build Interactions API input: direct Step[] array (per official REST: input: Content|Content[]|Step[]|string)
+  // Each Step: {type:"user_input"|"model_output", content:[{type:"text",text:"..."}]}
+  const input: { type: string; content: { type: string; text: string }[] }[] = [];
   for (const m of history.slice(-20)) {
     if (!m.content?.trim()) continue;
     const type = m.role === "assistant" ? "model_output" : "user_input";
-    step_list.push({ type, content: m.content.slice(0, 6000) });
+    input.push({ type, content: [{ type: "text", text: m.content.slice(0, 6000) }] });
   }
-  step_list.push({ type: "user_input", content: message });
+  input.push({ type: "user_input", content: [{ type: "text", text: message }] });
 
   const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/interactions`;
 
@@ -252,7 +252,7 @@ ${contextText}
       },
       body: JSON.stringify({
         model: "gemini-3.6-flash",
-        input: { step_list },
+        input,
         system_instruction: systemInstruction,
       }),
     });
@@ -271,8 +271,8 @@ ${contextText}
     }
 
     const json = await geminiRes.json() as {
-      // Interactions API steps-based: { steps: [{type, content}], ... } OR legacy fallbacks
-      steps?: { type?: string; content?: string; text?: string }[];
+      // Interactions API steps-based: { steps: [{type, content:[{type,text}]}], ... } OR legacy fallbacks
+      steps?: { type?: string; content?: string | { type?: string; text?: string }[]; text?: string }[];
       output?: { content?: { type?: string; text?: string }[]; role?: string }[];
       candidates?: { content?: { parts?: { text?: string }[] } }[];
       response?: string;
@@ -283,11 +283,23 @@ ${contextText}
     let text = "";
     if (Array.isArray(json.steps) && json.steps.length > 0) {
       const modelSteps = json.steps.filter((s) => s.type === "model_output");
-      const last = modelSteps[modelSteps.length - 1] ?? json.steps[json.steps.length - 1];
-      text = ((last as { content?: string; text?: string })?.content ?? (last as { text?: string })?.text ?? "").trim();
-      // Fallback: join all model_output contents if last empty
+      const last = (modelSteps[modelSteps.length - 1] ?? json.steps[json.steps.length - 1]) as { content?: string | { type?: string; text?: string }[]; text?: string } | undefined;
+      if (last) {
+        const c: unknown = (last as { content?: unknown }).content ?? (last as { text?: unknown }).text;
+        if (Array.isArray(c)) text = (c as { text?: string }[]).map((p) => p.text ?? "").join("").trim();
+        else if (typeof c === "string") text = c.trim();
+        else if (typeof (last as { text?: unknown }).text === "string") text = ((last as { text?: string }).text ?? "").trim();
+      }
       if (!text) {
-        text = modelSteps.map((s) => (s as { content?: string }).content ?? "").join("").trim();
+        text = modelSteps
+          .map((s) => {
+            const cc: unknown = (s as { content?: unknown }).content;
+            if (Array.isArray(cc)) return (cc as { text?: string }[]).map((p) => p.text ?? "").join("");
+            if (typeof cc === "string") return cc;
+            return "";
+          })
+          .join("")
+          .trim();
       }
     }
     if (!text && Array.isArray(json.output) && json.output.length > 0) {

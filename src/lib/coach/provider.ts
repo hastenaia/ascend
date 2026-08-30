@@ -38,11 +38,11 @@ async function callGemini(messages: ChatMessage[], _opts: { maxTokens?: number; 
   if (!key) return { ok: false, unavailable: true, reason: "no_key" }
   const systemMsg = messages.find((m) => m.role === "system")
   const systemInstruction = systemMsg?.content ?? ""
-  const step_list = messages
+  const input = messages
     .filter((m) => m.role !== "system")
     .map((m) => ({
       type: m.role === "assistant" ? "model_output" : "user_input",
-      content: m.content,
+      content: [{ type: "text", text: m.content }],
     }))
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 30_000)
@@ -53,7 +53,7 @@ async function callGemini(messages: ChatMessage[], _opts: { maxTokens?: number; 
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
         model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
-        input: { step_list },
+        input,
         system_instruction: systemInstruction,
       }),
       signal: controller.signal,
@@ -63,7 +63,7 @@ async function callGemini(messages: ChatMessage[], _opts: { maxTokens?: number; 
       return { ok: false, unavailable: true, reason: "upstream_error" }
     }
     const json = (await res.json()) as {
-      steps?: { type?: string; content?: string; text?: string }[]
+      steps?: { type?: string; content?: string | { type?: string; text?: string }[]; text?: string }[]
       output?: { content?: { type?: string; text?: string }[] }[]
       candidates?: { content?: { parts?: { text?: string }[] } }[]
       response?: string
@@ -72,9 +72,24 @@ async function callGemini(messages: ChatMessage[], _opts: { maxTokens?: number; 
     let text = ""
     if (Array.isArray(json.steps) && json.steps.length > 0) {
       const modelSteps = json.steps.filter((s) => s.type === "model_output")
-      const last = modelSteps[modelSteps.length - 1] ?? json.steps[json.steps.length - 1]
-      text = ((last as { content?: string; text?: string })?.content ?? (last as { text?: string })?.text ?? "").trim()
-      if (!text) text = modelSteps.map((s) => (s as { content?: string }).content ?? "").join("").trim()
+      const last = (modelSteps[modelSteps.length - 1] ?? json.steps[json.steps.length - 1]) as { content?: string | { type?: string; text?: string }[]; text?: string } | undefined
+      if (last) {
+        const c: unknown = (last as { content?: unknown }).content ?? (last as { text?: unknown }).text
+        if (Array.isArray(c)) text = (c as { text?: string }[]).map((p) => p.text ?? "").join("").trim()
+        else if (typeof c === "string") text = c.trim()
+        else if (typeof (last as { text?: unknown }).text === "string") text = ((last as { text?: string }).text ?? "").trim()
+      }
+      if (!text) {
+        text = modelSteps
+          .map((s) => {
+            const cc: unknown = (s as { content?: unknown }).content
+            if (Array.isArray(cc)) return (cc as { text?: string }[]).map((p) => p.text ?? "").join("")
+            if (typeof cc === "string") return cc
+            return ""
+          })
+          .join("")
+          .trim()
+      }
     }
     if (!text && Array.isArray(json.output) && json.output.length > 0) {
       text = json.output.flatMap((o) => o.content ?? []).map((p) => (p as { text?: string }).text ?? "").join("").trim()
