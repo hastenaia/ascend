@@ -17,6 +17,8 @@ import { getMomentumSummary } from "@/lib/momentum/queries"
 import { getQuickInsights } from "@/lib/analytics/quick-insights"
 import { InsightList } from "@/components/analytics/insight-list"
 import { CharacterProgress } from "@/components/dashboard/character-progress"
+import { JournalWidget } from "@/components/journal/journal-widget"
+import { getTodaysJournal, getJournalStreak } from "@/lib/journal/queries"
 
 export const metadata = { title: "Dashboard — Ascend" }
 export const dynamic = "force-dynamic"
@@ -43,12 +45,14 @@ export default async function DashboardPage() {
     )
   }
 
-  const [data, profileRes, statSummaries, momentumSummary, topInsights] = await Promise.all([
+  const [data, profileRes, statSummaries, momentumSummary, topInsights, todaysJournal, journalStreak] = await Promise.all([
     getDashboardData(supabase, user.id).catch(() => null),
     supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
     getStatsOverview(supabase).catch(() => []),
     getMomentumSummary(supabase, user.id).catch(() => null),
     getQuickInsights(supabase, user.id).catch(() => []),
+    getTodaysJournal(supabase, user.id).catch(() => null),
+    getJournalStreak(supabase, user.id).catch(() => ({ streak: 0, count: 0 })),
   ])
 
   const name = ((profileRes.data as { display_name: string | null } | null)?.display_name ?? "").trim() || null
@@ -168,6 +172,9 @@ export default async function DashboardPage() {
               </div>
 
               <div className="order-1 space-y-6 lg:order-2">
+                {/* Connected journal — shows streak + today's entry, feeds character/momentum */}
+                <JournalWidget todays={todaysJournal} streak={journalStreak.streak} />
+
                 {/* SECONDARY — XP / Level */}
                 <LevelCard level={data.level} />
 

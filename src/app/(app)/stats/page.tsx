@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/server"
 import { getStatsOverview, getStatHistory, type StatHistoryEntry } from "@/lib/stats/queries"
 import { STAT_SLUGS } from "@/lib/stats"
 import { StatsClient } from "@/components/stats/stats-client"
+import { getJournalStreak } from "@/lib/journal/queries"
+import { NotebookPen } from "lucide-react"
 
 export const metadata = { title: "Character — Ascend" }
 export const dynamic = "force-dynamic"
@@ -41,6 +43,11 @@ export default async function StatsPage() {
     })
   )
 
+  let journalStreak = { streak: 0, count: 0 }
+  try {
+    journalStreak = await getJournalStreak(supabase, user.id)
+  } catch {}
+
   const hasActivity = stats.some((s) => s.points > 0)
 
   return (
@@ -67,6 +74,14 @@ export default async function StatsPage() {
         )}
 
         <StatsClient stats={stats} historyBySlug={historyBySlug} />
+
+        {journalStreak.count > 0 && (
+          <div className="rounded-xl border bg-muted/20 p-4 text-sm">
+            <p className="flex items-center gap-2 font-medium"><NotebookPen className="size-4 text-primary" /> Journal fuels your Mental & EQ</p>
+            <p className="mt-1 text-xs text-muted-foreground">{journalStreak.count} journal entries · {journalStreak.streak}-day streak. Each daily entry grants +12 XP (Mental 70% / EQ 30%) and recovery credit.</p>
+            <Button asChild variant="outline" size="sm" className="mt-3"><Link href="/journal">Open Journal</Link></Button>
+          </div>
+        )}
       </div>
     </PageTransition>
   )

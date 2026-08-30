@@ -11,6 +11,7 @@ import {
   Bot,
   Settings2,
   Activity,
+  NotebookPen,
   type LucideIcon,
 } from "lucide-react"
 
@@ -29,6 +30,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Current Phase", href: "/phase", icon: Target, group: "progression", description: "Phase progress" },
   { label: "Journey", href: "/journey", icon: Route, group: "progression", description: "Your path" },
   { label: "Quests", href: "/quests", icon: ScrollText, group: "progression", description: "Active quests" },
+  { label: "Journal", href: "/journal", icon: NotebookPen, group: "progression", description: "Daily reflection" },
   { label: "Character", href: "/stats", icon: Activity, group: "progression", description: "Stats and attributes" },
   { label: "Skills", href: "/skills", icon: Sparkles, group: "progression", description: "Skill tree" },
   { label: "Achievements", href: "/achievements", icon: Trophy, group: "progression", description: "Milestones" },
@@ -46,4 +48,4 @@ export const NAV_GROUP_LABELS: Record<NavGroup, string> = {
   system: "System",
 }
 
-export const MOBILE_PRIMARY_HREFS = ["/dashboard", "/phase", "/quests", "/journey", "/coach"] as const
+export const MOBILE_PRIMARY_HREFS = ["/dashboard", "/phase", "/quests", "/journal", "/coach"] as const

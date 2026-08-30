@@ -1,6 +1,7 @@
 "use client"
 import * as React from "react"
 import { Clock, Calendar, Repeat, Zap, Trash2, Target, Sparkles } from "lucide-react"
+import Link from "next/link"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -83,6 +84,12 @@ export function QuestDetail({ quest, open, onOpenChange, onComplete, onDelete, b
         </div>
 
         <Separator />
+
+        {!done && (
+          <div className="rounded-lg border bg-primary/5 p-2.5 text-xs leading-relaxed text-muted-foreground">
+            Reflect after completing? <Button variant="link" size="sm" className="h-auto p-0 text-xs" asChild><Link href={`/journal?quest=${quest.id}`}>Journal about this quest →</Link></Button>
+          </div>
+        )}
 
         <div className="flex gap-2">
           {!done && onDelete && (
