@@ -1,14 +1,16 @@
 "use client"
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion"
 import { NotebookPen, Sparkles, Zap, ArrowRight, CalendarDays, Link2, Save } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
 import { MoodPicker } from "@/components/journal/mood-picker"
+import { TagInput } from "@/components/journal/tag-input"
 import { saveJournalEntry, createQuestFromJournal } from "@/lib/journal/actions"
 import type { Mood } from "@/lib/validations/journal"
 import type { JournalEntry } from "@/lib/journal/queries"
@@ -30,6 +32,7 @@ type Props = {
 
 export function JournalEditor({ initial, todayStr, currentPhaseId, questOptions = [] }: Props) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const reduced = useReducedMotion()
   const [values, setValues] = React.useState({
     learnings: initial?.learnings ?? "",
@@ -39,9 +42,26 @@ export function JournalEditor({ initial, todayStr, currentPhaseId, questOptions 
     body: initial?.body ?? "",
   })
   const [mood, setMood] = React.useState<Mood | null>((initial?.mood as Mood | null) ?? null)
-  const [questId, setQuestId] = React.useState<string>(initial?.quest_id ?? "")
+  const [questId, setQuestId] = React.useState<string>(initial?.quest_id ?? searchParams.get("quest") ?? "")
+  const [tags, setTags] = React.useState<string[]>(initial?.tags ?? [])
   const [busy, setBusy] = React.useState(false)
   const [showFree, setShowFree] = React.useState(!!initial?.body)
+
+  // Sync when initial changes (after save + refresh, history load) — intentionally mirrors server prop to local form
+  const initialKey = initial?.id ?? initial?.entry_date ?? ""
+  React.useEffect(() => {
+    setValues({
+      learnings: initial?.learnings ?? "",
+      worked: initial?.worked ?? "",
+      didnt_work: initial?.didnt_work ?? "",
+      change_plan: initial?.change_plan ?? "",
+      body: initial?.body ?? "",
+    })
+    setMood((initial?.mood as Mood | null) ?? null)
+    setQuestId(initial?.quest_id ?? searchParams.get("quest") ?? "")
+    setTags(initial?.tags ?? [])
+    setShowFree(!!initial?.body)
+  }, [initialKey, searchParams])
 
   const hasContent = Object.values(values).some((v) => v.trim().length > 0)
 
@@ -57,9 +77,10 @@ export function JournalEditor({ initial, todayStr, currentPhaseId, questOptions 
         change_plan: values.change_plan || null,
         body: values.body || null,
         mood,
-        phase_id: currentPhaseId ?? null,
+        // Preserve original phase link on edit; only set current phase for new entries without one
+        phase_id: initial?.phase_id ?? currentPhaseId ?? null,
         quest_id: questId || null,
-        tags: null,
+        tags: tags.length ? tags : null,
       } as never)
       if (res.is_new && res.xp_awarded > 0) toast.success(`+${res.xp_awarded} XP · Mental & EQ grew`, { description: "Journal saved — streak +1" })
       else toast.success("Journal saved", { description: res.is_new ? "Updated for today" : "Entry updated" })
@@ -79,7 +100,7 @@ export function JournalEditor({ initial, todayStr, currentPhaseId, questOptions 
     }
     setBusy(true)
     try {
-      const res = await createQuestFromJournal(plan)
+      await createQuestFromJournal(plan)
       toast.success("Quest created from journal", { description: plan.slice(0, 60) })
       router.refresh()
     } catch (e: unknown) {
@@ -104,13 +125,13 @@ export function JournalEditor({ initial, todayStr, currentPhaseId, questOptions 
 
       <div className="mt-4 flex flex-wrap gap-3">
         <div className="flex-1 min-w-[180px]">
-          <Label className="text-xs">Mood</Label>
+          <Label htmlFor="journal-mood" className="text-xs">Mood</Label>
           <div className="mt-1.5"><MoodPicker value={mood} onChange={setMood} /></div>
         </div>
         {questOptions.length > 0 && (
           <div className="min-w-[200px] flex-1">
-            <Label className="text-xs flex items-center gap-1"><Link2 className="size-3" /> Link to quest (optional)</Label>
-            <select value={questId} onChange={(e) => setQuestId(e.target.value)} className="mt-1.5 h-9 w-full rounded-xl border bg-background px-3 text-sm">
+            <Label htmlFor="journal-quest" className="text-xs flex items-center gap-1"><Link2 className="size-3" /> Link to quest (optional)</Label>
+            <select id="journal-quest" value={questId} onChange={(e) => setQuestId(e.target.value)} className="mt-1.5 h-9 w-full rounded-xl border bg-background px-3 text-sm">
               <option value="">None — standalone reflection</option>
               {questOptions.map((q) => (
                 <option key={q.id} value={q.id}>{q.title}</option>
@@ -118,6 +139,9 @@ export function JournalEditor({ initial, todayStr, currentPhaseId, questOptions 
             </select>
           </div>
         )}
+      </div>
+      <div className="mt-3">
+        <TagInput value={tags} onChange={setTags} />
       </div>
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2">

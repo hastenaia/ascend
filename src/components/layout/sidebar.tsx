@@ -69,7 +69,7 @@ export function Sidebar({
                 <p className="px-3 pb-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">{grp.label}</p>
                 <div className="space-y-0.5">
                   {grp.items.map((item) => {
-                    const active = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href))
+                    const active = pathname === item.href || (item.href !== "/dashboard" && (pathname === item.href || pathname.startsWith(item.href + "/")))
                     const Icon = item.icon
                     return (
                       <Link

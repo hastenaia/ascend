@@ -1,5 +1,5 @@
 "use client"
-import { motion } from "framer-motion"
+import { motion, useReducedMotion } from "framer-motion"
 import { Clock, Calendar, Repeat, Check, Zap } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -32,6 +32,7 @@ type Props = {
 }
 
 export function QuestCard({ quest, onOpen, onComplete, busy, index = 0 }: Props) {
+  const reduced = useReducedMotion()
   const done = quest.status === "completed"
   const dueLabel = formatDueLabel(quest.due_date)
   const overdue = dueLabel?.startsWith("Overdue")
@@ -39,14 +40,23 @@ export function QuestCard({ quest, onOpen, onComplete, busy, index = 0 }: Props)
 
   return (
     <motion.div
-      layout
-      initial={{ opacity: 0, y: 8 }}
+      layout={!reduced}
+      initial={reduced ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.97 }}
-      transition={{ duration: 0.25, delay: Math.min(index * 0.03, 0.3) }}
-      whileHover={done ? undefined : { y: -1 }}
+      exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
+      transition={reduced ? { duration: 0 } : { duration: 0.25, delay: Math.min(index * 0.03, 0.3) }}
+      whileHover={done || reduced ? undefined : { y: -1 }}
     >
       <Card
+        role="button"
+        tabIndex={0}
+        aria-label={`Open quest ${quest.title}`}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            onOpen?.(quest)
+          }
+        }}
         className={cn(
           "group cursor-pointer overflow-hidden transition-colors",
           done ? "border-emerald-200/50 bg-emerald-50/40 dark:border-emerald-900/40 dark:bg-emerald-950/20" : "hover:border-primary/25 hover:shadow-[0_10px_30px_-14px_hsl(252_60%_50%/0.25)]"

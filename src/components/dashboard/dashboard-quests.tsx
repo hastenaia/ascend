@@ -2,7 +2,7 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { motion } from "framer-motion"
+import { motion, useReducedMotion } from "framer-motion"
 import { Check, ScrollText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/feedback/empty-state"
@@ -13,6 +13,7 @@ import { categoryIcon } from "@/lib/icons"
 import type { QuestRow } from "@/lib/quests/queries"
 
 export function DashboardQuests({ quests }: { quests: QuestRow[] }) {
+  const reduced = useReducedMotion()
   const router = useRouter()
   const [busyId, setBusyId] = React.useState<string | null>(null)
   const [anim, setAnim] = React.useState<{ visible: boolean; xp: number }>({ visible: false, xp: 0 })
@@ -51,7 +52,7 @@ export function DashboardQuests({ quests }: { quests: QuestRow[] }) {
             const busy = busyId === q.id
             const Icon = categoryIcon(q.category)
             return (
-              <motion.div key={q.id} layout className="group flex items-center justify-between gap-3 rounded-xl border bg-card p-3 transition-colors hover:border-primary/25">
+              <motion.div key={q.id} layout={!reduced} className="group flex items-center justify-between gap-3 rounded-xl border bg-card p-3 transition-colors hover:border-primary/25">
                 <div className="flex min-w-0 items-center gap-3">
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-lg ascend-gradient text-primary ring-1 ring-primary/20">
                     <Icon className="size-4" />

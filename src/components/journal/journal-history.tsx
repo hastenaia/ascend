@@ -1,12 +1,13 @@
 "use client"
-import { motion } from "framer-motion"
-import { CalendarDays, NotebookPen, Quote, Link2 } from "lucide-react"
+import { motion, useReducedMotion } from "framer-motion"
+import { CalendarDays, NotebookPen, Quote, Link2, Tag } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import type { JournalEntry } from "@/lib/journal/queries"
 
 const moodEmoji: Record<string, string> = { terrible: "😔", low: "😕", okay: "😐", good: "🙂", great: "🤩" }
 
 export function JournalHistory({ entries }: { entries: JournalEntry[] }) {
+  const reduced = useReducedMotion()
   if (entries.length === 0) {
     return (
       <div className="rounded-xl border border-dashed bg-muted/30 p-6 text-center">
@@ -24,9 +25,9 @@ export function JournalHistory({ entries }: { entries: JournalEntry[] }) {
         return (
           <motion.article
             key={e.id}
-            initial={{ opacity: 0, y: 8 }}
+            initial={reduced ? false : { opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: Math.min(i * 0.04, 0.3) }}
+            transition={{ duration: reduced ? 0 : 0.25, delay: reduced ? 0 : Math.min(i * 0.04, 0.3) }}
             className="rounded-xl border bg-card p-4"
           >
             <header className="flex flex-wrap items-center gap-2">
@@ -38,6 +39,13 @@ export function JournalHistory({ entries }: { entries: JournalEntry[] }) {
             </header>
             {(e.phaseTitle || e.questTitle) && (
               <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><Link2 className="size-3" /> {e.phaseTitle ? `Phase: ${e.phaseTitle}` : ""} {e.phaseTitle && e.questTitle ? " · " : ""} {e.questTitle ? `Quest: ${e.questTitle}` : ""}</p>
+            )}
+            {e.tags && e.tags.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {e.tags.map((t) => (
+                  <span key={t} className="inline-flex items-center gap-1 rounded-full border bg-muted px-2 py-0.5 text-[10px]"><Tag className="size-3" /> {t}</span>
+                ))}
+              </div>
             )}
             <div className="mt-3 space-y-2">
               {hasStructured ? (

@@ -1,6 +1,6 @@
 "use client"
 import Link from "next/link"
-import { motion } from "framer-motion"
+import { motion, useReducedMotion } from "framer-motion"
 import { ArrowRight, Lock, Target, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ProgressRing } from "@/components/progress-ring"
@@ -19,12 +19,13 @@ type Props = {
 
 /** The visual centerpiece of the dashboard: current phase with depth, glow and a progress ring. */
 export function PhaseHero({ phaseNumber, title, objective, progressPct, completedMilestones, totalMilestones, nextMilestoneTitle, rewardXp, locked }: Props) {
+  const reduced = useReducedMotion()
   const num = String(phaseNumber).padStart(2, "0")
   return (
     <motion.section
-      initial={{ opacity: 0, y: 12 }}
+      initial={reduced ? false : { opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      transition={reduced ? { duration: 0 } : { duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
       className="glow-primary sheen relative overflow-hidden rounded-3xl border border-primary/25 ascend-gradient-strong p-[1px]"
     >
       <div className="relative overflow-hidden rounded-[calc(1.5rem-1px)] bg-card">

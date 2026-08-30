@@ -25,7 +25,8 @@ export async function createQuestAction(raw: CreateQuestInput & { xp_reward: num
   const userId = mustUserId(user)
 
   // Verify milestone belongs to one of the user's phases (prevents cross-account links)
-  let milestoneId = input.milestone_id ?? null
+  // Per Ascend decisions: do NOT silently auto-attach standalone quests. Show error if link invalid.
+  const milestoneId = input.milestone_id ?? null
   if (milestoneId) {
     const { data: owned } = await supabase
       .from("milestones")
@@ -33,42 +34,22 @@ export async function createQuestAction(raw: CreateQuestInput & { xp_reward: num
       .eq("id", milestoneId)
       .in("phase_id", (await supabase.from("phases").select("id").eq("user_id", userId)).data?.map((p) => p.id) ?? [])
       .limit(1)
-    if (!owned || owned.length === 0) milestoneId = null
+    if (!owned || owned.length === 0) {
+      throw new Error("Selected milestone not found or not yours.")
+    }
   }
 
   // Verify phase ownership
-  let phaseId = input.phase_id ?? null
+  const phaseId = input.phase_id ?? null
   if (phaseId && !milestoneId) {
     const { data: ownedPhase } = await supabase.from("phases").select("id").eq("id", phaseId).eq("user_id", userId).limit(1)
-    if (!ownedPhase || ownedPhase.length === 0) phaseId = null
-  }
-
-  // Smooth fallback: if no parent at all, auto-attach to active/available phase
-  // After 0013 standalone is allowed, but attaching keeps character->phase link.
-  if (!milestoneId && !phaseId) {
-    // Fix H4 ordering: text sort "available" > "active", so query active first explicitly
-    const { data: activePhase } = await supabase
-      .from("phases")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("status", "active")
-      .order("order_index", { ascending: true })
-      .limit(1)
-      .maybeSingle()
-    if (activePhase?.id) phaseId = activePhase.id as string
-    else {
-      const { data: availablePhase } = await supabase
-        .from("phases")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("status", "available")
-        .order("order_index", { ascending: true })
-        .limit(1)
-        .maybeSingle()
-      if (availablePhase?.id) phaseId = availablePhase.id as string
-      // else: standalone is now permitted (0013) — keep phaseId null so creation still succeeds
+    if (!ownedPhase || ownedPhase.length === 0) {
+      throw new Error("Selected phase not found or not yours.")
     }
   }
+
+  // Standalone quests are allowed (0013). Do NOT auto-attach.
+  // If user provided no parent, keep both null — deliberate standalone per decisions.
 
   // Validate linked_skill exists (skills are global, but check prevents orphan UUIDs)
   if (input.linked_skill) {
@@ -101,22 +82,14 @@ export async function createQuestAction(raw: CreateQuestInput & { xp_reward: num
     .select("id")
     .single()
 
-  if (error) {
-    if (error.message.includes("quests_parent") || error.message.includes("check constraint")) {
-      throw new Error("Quest needs a phase or milestone — select one or start your journey.")
-    }
-    throw new Error(error.message)
-  }
+  if (error) throw new Error(error.message)
 
-  // Revalidate grouped routes correctly for Next 16 (app)/(app) grouping
   revalidatePath("/quests")
-  revalidatePath("/(app)/quests")
   revalidatePath("/dashboard")
-  revalidatePath("/(app)/dashboard")
   revalidatePath("/phase")
   revalidatePath("/stats")
   revalidatePath("/skills")
-  revalidatePath("/")
+  revalidatePath("/journal")
   return { id: inserted!.id }
 }
 
@@ -137,12 +110,11 @@ export async function completeQuestAction(questId: string): Promise<CompleteQues
   if (!result?.ok) throw new Error(result?.error ?? "completion_failed")
 
   revalidatePath("/quests")
-  revalidatePath("/(app)/quests")
   revalidatePath("/dashboard")
-  revalidatePath("/(app)/dashboard")
   revalidatePath("/phase")
   revalidatePath("/stats")
   revalidatePath("/skills")
+  revalidatePath("/journal")
   return result
 }
 
@@ -158,8 +130,7 @@ export async function deleteQuestAction(questId: string): Promise<void> {
   if (error) throw new Error(error.message)
 
   revalidatePath("/quests")
-  revalidatePath("/(app)/quests")
   revalidatePath("/dashboard")
-  revalidatePath("/(app)/dashboard")
   revalidatePath("/stats")
+  revalidatePath("/journal")
 }

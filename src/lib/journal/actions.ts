@@ -20,8 +20,9 @@ export async function saveJournalEntry(raw: JournalInput): Promise<{ id: string;
   } = await supabase.auth.getUser()
   mustUserId(user)
 
-  const today = new Date().toISOString().slice(0, 10)
-  const entryDate = input.entry_date || today
+  // Use local date string consistently (matches todayDateString helper) — but let DB reject future.
+  // Pass null if today so DB uses current_date as source of truth; otherwise pass explicit date for back-dated entries (no XP).
+  const entryDate = input.entry_date ?? null
 
   // Call secure RPC that upserts + awards XP/stats/momentum atomically
   const { data, error } = await supabase.rpc("log_journal_entry", {
@@ -42,12 +43,10 @@ export async function saveJournalEntry(raw: JournalInput): Promise<{ id: string;
   if (!res?.ok) throw new Error(res?.error ?? "journal_failed")
 
   revalidatePath("/journal")
-  revalidatePath("/(app)/journal")
   revalidatePath("/dashboard")
-  revalidatePath("/(app)/dashboard")
   revalidatePath("/stats")
-  revalidatePath("/(app)/stats")
   revalidatePath("/quests")
+  revalidatePath("/phase")
 
   return { id: res.id!, is_new: !!res.is_new, xp_awarded: res.xp_awarded ?? 0, xp_total: res.xp_total ?? 0, level: res.level ?? 1 }
 }

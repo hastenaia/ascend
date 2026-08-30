@@ -337,7 +337,7 @@ export type Database = {
           user_id: string
           amount: number
           source: string
-          source_type?: "quest" | "milestone" | "phase" | "bonus" | "adjustment" | null
+          source_type?: "quest" | "milestone" | "phase" | "bonus" | "adjustment" | "achievement" | null
           source_id?: string | null
           source_key?: string | null
           quest_id?: string | null
@@ -350,7 +350,7 @@ export type Database = {
           user_id?: string
           amount?: number
           source?: string
-          source_type?: "quest" | "milestone" | "phase" | "bonus" | "adjustment" | null
+          source_type?: "quest" | "milestone" | "phase" | "bonus" | "adjustment" | "achievement" | null
           source_id?: string | null
           source_key?: string | null
           quest_id?: string | null

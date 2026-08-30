@@ -30,7 +30,7 @@ export const createQuestSchema = z.object({
   description: z.string().max(500).optional().nullable(),
   category: z.enum(QUEST_CATEGORIES).default("general"),
   difficulty: z.enum(QUEST_DIFFICULTIES).default("medium"),
-  xp_reward: z.number().int().min(5).max(500),
+  xp_reward: z.preprocess(nanToNull, z.number().int().min(10).max(500).nullable().optional()).transform((v) => v ?? XP_BANDS.medium.default),
   estimated_duration: z.preprocess(nanToNull, z.number().int().min(5).max(480).nullable().optional()),
   due_date: z.preprocess(emptyToNull, dateString.nullable().optional()),
   recurrence: z.enum(RECURRENCES).default("none"),

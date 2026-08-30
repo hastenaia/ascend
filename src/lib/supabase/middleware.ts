@@ -12,9 +12,11 @@ export async function updateSession(request: NextRequest) {
     const isProtected =
       request.nextUrl.pathname.startsWith("/dashboard") ||
       request.nextUrl.pathname.startsWith("/quests") ||
+      request.nextUrl.pathname.startsWith("/journal") ||
       request.nextUrl.pathname.startsWith("/phase") ||
       request.nextUrl.pathname.startsWith("/journey") ||
       request.nextUrl.pathname.startsWith("/skills") ||
+      request.nextUrl.pathname.startsWith("/stats") ||
       request.nextUrl.pathname.startsWith("/goals") ||
       request.nextUrl.pathname.startsWith("/analytics") ||
       request.nextUrl.pathname.startsWith("/achievements") ||
@@ -38,7 +40,7 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set({ name, value, ...options }))
           supabaseResponse = NextResponse.next({ request })
           cookiesToSet.forEach(({ name, value, options }) => supabaseResponse.cookies.set(name, value, options))
         },
@@ -56,9 +58,11 @@ export async function updateSession(request: NextRequest) {
   const isProtected =
     request.nextUrl.pathname.startsWith("/dashboard") ||
     request.nextUrl.pathname.startsWith("/quests") ||
+    request.nextUrl.pathname.startsWith("/journal") ||
     request.nextUrl.pathname.startsWith("/phase") ||
     request.nextUrl.pathname.startsWith("/journey") ||
     request.nextUrl.pathname.startsWith("/skills") ||
+    request.nextUrl.pathname.startsWith("/stats") ||
     request.nextUrl.pathname.startsWith("/goals") ||
     request.nextUrl.pathname.startsWith("/analytics") ||
     request.nextUrl.pathname.startsWith("/achievements") ||
