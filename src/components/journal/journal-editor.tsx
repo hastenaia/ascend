@@ -1,5 +1,4 @@
 "use client"
-/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { useSearchParams } from "next/navigation"

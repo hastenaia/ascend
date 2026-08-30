@@ -51,19 +51,25 @@ export async function getJournalHistory(supabase: SupabaseClient, userId: string
 }
 
 export async function getJournalStreak(supabase: SupabaseClient, userId: string): Promise<{ streak: number; count: number }> {
-  const history = await getJournalHistory(supabase, userId, 60)
-  if (history.length === 0) return { streak: 0, count: 0 }
+  const { count } = await supabase
+    .from("reflections")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .not("entry_date", "is", null)
+  const total = count ?? 0
+
+  const history = await getJournalHistory(supabase, userId, 200)
+  if (history.length === 0) return { streak: 0, count: total }
   const dates = new Set(history.map((h) => h.entry_date))
   let streak = 0
   const d = new Date()
   for (let i = 0; i < 90; i++) {
     const key = todayDateString(d)
     if (dates.has(key)) streak++
-    else if (i === 0) { /* allow today missing? streak 0 */ break }
     else break
     d.setDate(d.getDate() - 1)
   }
-  return { streak, count: history.length }
+  return { streak, count: total }
 }
 
 export async function getJournalWithMeta(supabase: SupabaseClient, userId: string, entries: JournalEntry[]): Promise<JournalEntry[]> {
