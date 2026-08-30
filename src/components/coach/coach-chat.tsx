@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { COACH_UNAVAILABLE_MESSAGE, SUGGESTED_PROMPTS, type CoachMsg } from "@/components/coach/types"
+import { Trash2 } from "lucide-react"
+import { toast } from "sonner"
 
 export function CoachChat({ initialHistory }: { initialHistory: CoachMsg[] }) {
   const reduced = useReducedMotion()
@@ -17,6 +19,17 @@ export function CoachChat({ initialHistory }: { initialHistory: CoachMsg[] }) {
   React.useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: reduced ? "auto" : "smooth" })
   }, [messages, loading, reduced])
+
+  async function clearHistory() {
+    try {
+      const res = await fetch("/api/coach/clear", { method: "POST" })
+      if (!res.ok) throw new Error()
+      setMessages([])
+      toast.success("Chat cleared")
+    } catch {
+      toast.error("Could not clear chat")
+    }
+  }
 
   async function send(text: string) {
     const message = text.trim()
@@ -60,6 +73,14 @@ export function CoachChat({ initialHistory }: { initialHistory: CoachMsg[] }) {
 
   return (
     <div className="flex h-[560px] flex-col overflow-hidden rounded-2xl border bg-card">
+      {messages.length > 0 && (
+        <div className="flex items-center justify-end gap-2 border-b bg-muted/20 px-3 py-2">
+          <span className="text-[11px] text-muted-foreground">{messages.length} messages</span>
+          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={clearHistory} disabled={loading}>
+            <Trash2 className="size-3.5" /> Clear
+          </Button>
+        </div>
+      )}
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
         {empty ? (
           <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
@@ -67,7 +88,7 @@ export function CoachChat({ initialHistory }: { initialHistory: CoachMsg[] }) {
               <Sparkles className="size-5" />
             </span>
             <div>
-              <p className="text-sm font-semibold">Your coach knows your phases, quests, and momentum.</p>
+              <p className="text-sm font-semibold">Your coach knows your phases, quests, journal, and momentum.</p>
               <p className="mt-1 text-xs text-muted-foreground">Ask anything about your growth — or start with a suggestion.</p>
             </div>
             <div className="flex max-w-md flex-wrap justify-center gap-1.5">
