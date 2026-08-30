@@ -16,7 +16,7 @@ export type ChatMessage = { role: "system" | "user" | "assistant"; content: stri
 
 export type ModelResult =
   | { ok: true; content: string }
-  | { ok: false; unavailable: true; reason: "no_key" | "upstream_error" }
+  | { ok: false; unavailable: true; reason: "no_key" | "upstream_error"; detail?: string }
 
 export function coachConfigured(): boolean {
   return !!(process.env.GEMINI_API_KEY || process.env.AI_API_KEY || process.env.OPENAI_API_KEY)
@@ -59,8 +59,9 @@ async function callGemini(messages: ChatMessage[], _opts: { maxTokens?: number; 
       signal: controller.signal,
     })
     if (!res.ok) {
-      console.error("[coach] gemini upstream", res.status, (await res.text()).slice(0, 600))
-      return { ok: false, unavailable: true, reason: "upstream_error" }
+      const body = (await res.text()).slice(0, 600)
+      console.error("[coach] gemini upstream", res.status, body)
+      return { ok: false, unavailable: true, reason: "upstream_error", detail: `HTTP ${res.status}: ${body.slice(0, 200)}` }
     }
     const json = (await res.json()) as {
       steps?: { type?: string; content?: string | { type?: string; text?: string }[]; text?: string }[]
@@ -103,7 +104,7 @@ async function callGemini(messages: ChatMessage[], _opts: { maxTokens?: number; 
     return { ok: true, content: text }
   } catch (e) {
     console.error("[coach] gemini call failed", e instanceof Error ? e.message : e)
-    return { ok: false, unavailable: true, reason: "upstream_error" }
+    return { ok: false, unavailable: true, reason: "upstream_error", detail: e instanceof Error ? e.message : String(e) }
   } finally {
     clearTimeout(timer)
   }
@@ -127,8 +128,9 @@ async function callLegacy(messages: ChatMessage[], opts: { maxTokens?: number; t
       signal: controller.signal,
     })
     if (!res.ok) {
-      console.error("[coach] upstream error", res.status, (await res.text()).slice(0, 300))
-      return { ok: false, unavailable: true, reason: "upstream_error" }
+      const body = (await res.text()).slice(0, 300)
+      console.error("[coach] upstream error", res.status, body)
+      return { ok: false, unavailable: true, reason: "upstream_error", detail: `HTTP ${res.status}: ${body.slice(0, 120)}` }
     }
     const json = (await res.json()) as { choices?: { message?: { content?: string } }[] }
     const content = json.choices?.[0]?.message?.content?.trim()
@@ -136,7 +138,7 @@ async function callLegacy(messages: ChatMessage[], opts: { maxTokens?: number; t
     return { ok: true, content }
   } catch (e) {
     console.error("[coach] model call failed", e instanceof Error ? e.message : e)
-    return { ok: false, unavailable: true, reason: "upstream_error" }
+    return { ok: false, unavailable: true, reason: "upstream_error", detail: e instanceof Error ? e.message : String(e) }
   } finally {
     clearTimeout(timer)
   }

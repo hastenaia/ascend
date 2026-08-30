@@ -70,9 +70,17 @@ export function QuestDetail({ quest, open, onOpenChange, onComplete, onDelete, o
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ quest_id: quest.id }),
       })
-      const json = (await res.json()) as { ok?: boolean; proposal?: AdaptQuestProposal }
+      const json = (await res.json()) as {
+        ok?: boolean
+        proposal?: AdaptQuestProposal
+        debug?: { stage?: string; detail?: string }
+      }
       if (!json.ok || !json.proposal) {
-        setAdaptError("The coach couldn't suggest an adaptation right now.")
+        // In development, the endpoint includes a `debug.stage` so the exact
+        // failing stage is visible; production keeps the friendly copy.
+        setAdaptError(
+          json.debug?.stage ? `[dev] ${json.debug.stage}: ${json.debug.detail ?? "unknown"}` : "The coach couldn't suggest an adaptation right now.",
+        )
         setAdaptState("idle")
         return
       }
