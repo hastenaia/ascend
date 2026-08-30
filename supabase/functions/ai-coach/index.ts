@@ -1,7 +1,7 @@
-// Supabase Edge Function: ai-coach -> Google Gemini 2.5 Flash
+// Supabase Edge Function: ai-coach -> Google Gemini 3.6 Flash (Interactions API)
 // Architecture: Ascend Frontend -> Supabase Edge Function ai-coach -> Gemini -> Ascend UI
 // Env: GEMINI_API_KEY (server-only, never exposed)
-// Model: gemini-2.5-flash via generateContent REST
+// Model: gemini-3.6-flash via Interactions API
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
@@ -231,27 +231,29 @@ ${SAFETY_RULES}
 ${contextText}
 === END DATA ===`;
 
-  // Convert history + current message to Gemini contents
-  // Gemini expects: contents: [{role:"user", parts:[{text:"..."}]}, {role:"model", parts:[{text:"..."}]}]
-  const contents: { role: string; parts: { text: string }[] }[] = [];
+  // Build Interactions API input: preserve history as ordered turns + current message
+  // Interactions API expects: { model, input: [{role, content:[{type:"text", text}]}], system_instruction }
+  const interactionInput: { role: string; content: { type: string; text: string }[] }[] = [];
   for (const m of history.slice(-20)) {
-    const role = m.role === "assistant" ? "model" : "user";
-    // Skip empty
     if (!m.content?.trim()) continue;
-    contents.push({ role, parts: [{ text: m.content.slice(0, 6000) }] });
+    const role = m.role === "assistant" ? "model" : "user";
+    interactionInput.push({ role, content: [{ type: "text", text: m.content.slice(0, 6000) }] });
   }
-  contents.push({ role: "user", parts: [{ text: message }] });
+  interactionInput.push({ role: "user", content: [{ type: "text", text: message }] });
 
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(geminiKey)}`;
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/interactions`;
 
   try {
     const geminiRes = await fetch(geminiUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": geminiKey,
+      },
       body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemInstruction }] },
-        contents,
-        generationConfig: { temperature: 0.7, maxOutputTokens: 700 },
+        model: "gemini-3.6-flash",
+        input: interactionInput,
+        system_instruction: systemInstruction,
       }),
     });
 
@@ -269,12 +271,29 @@ ${contextText}
     }
 
     const json = await geminiRes.json() as {
+      // Interactions API: { output: [{ content: [{type,text}] }], interaction_id, ... } OR legacy candidates fallback
+      output?: { content?: { type?: string; text?: string }[]; role?: string }[];
       candidates?: { content?: { parts?: { text?: string }[] } }[];
+      response?: string;
+      text?: string;
       promptFeedback?: unknown;
     };
-    const text = json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("").trim() ?? "";
+    // Prefer Interactions output, fallback to candidates for compatibility
+    let text = "";
+    if (Array.isArray(json.output) && json.output.length > 0) {
+      text = json.output
+        .flatMap((o) => o.content ?? [])
+        .map((p) => (p as { text?: string }).text ?? "")
+        .join("")
+        .trim();
+    }
+    if (!text && json.candidates?.[0]?.content?.parts) {
+      text = json.candidates[0].content.parts.map((p) => p.text ?? "").join("").trim();
+    }
+    if (!text && typeof json.response === "string") text = json.response.trim();
+    if (!text && typeof json.text === "string") text = json.text.trim();
     if (!text) {
-      console.error("[ai-coach] gemini empty candidates", JSON.stringify(json).slice(0, 800));
+      console.error("[ai-coach] gemini empty output", JSON.stringify(json).slice(0, 800));
       return new Response(JSON.stringify({ ok: false, unavailable: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 

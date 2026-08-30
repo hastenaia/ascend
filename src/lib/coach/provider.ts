@@ -1,10 +1,10 @@
 /**
  * AI Coach provider — server-side only. NEVER import from client components.
  *
- * Prefers Google Gemini (GEMINI_API_KEY) via generateContent REST.
+ * Prefers Google Gemini (GEMINI_API_KEY) via Interactions API.
  * Falls back to OpenAI-compatible gateway (AI_API_KEY / OPENAI_API_KEY) for legacy.
  *   GEMINI_API_KEY — preferred; without any key the coach is OFF
- *   GEMINI_MODEL   — default gemini-2.5-flash
+ *   GEMINI_MODEL   — default gemini-3.6-flash
  *   AI_API_KEY / OPENAI_API_KEY — legacy fallback
  *
  * If no key is configured or the upstream call fails, callers receive
@@ -32,34 +32,51 @@ function legacyBaseUrl(): string {
   return (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "")
 }
 
-async function callGemini(messages: ChatMessage[], opts: { maxTokens?: number; temperature?: number }): Promise<ModelResult> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function callGemini(messages: ChatMessage[], _opts: { maxTokens?: number; temperature?: number }): Promise<ModelResult> {
   const key = geminiKey()
   if (!key) return { ok: false, unavailable: true, reason: "no_key" }
-  // Gemini generateContent: system instruction + contents (user/model)
   const systemMsg = messages.find((m) => m.role === "system")
-  const contents = messages
+  const systemInstruction = systemMsg?.content ?? ""
+  const input = messages
     .filter((m) => m.role !== "system")
-    .map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }))
+    .map((m) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      content: [{ type: "text", text: m.content }],
+    }))
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 30_000)
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(process.env.GEMINI_MODEL || "gemini-2.5-flash")}:generateContent?key=${encodeURIComponent(key)}`
+    const url = `https://generativelanguage.googleapis.com/v1beta/interactions`
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
-        system_instruction: systemMsg ? { parts: [{ text: systemMsg.content }] } : undefined,
-        contents,
-        generationConfig: { temperature: opts.temperature ?? 0.7, maxOutputTokens: opts.maxTokens ?? 700 },
+        model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
+        input,
+        system_instruction: systemInstruction,
       }),
       signal: controller.signal,
     })
     if (!res.ok) {
-      console.error("[coach] gemini upstream", res.status, (await res.text()).slice(0, 400))
+      console.error("[coach] gemini upstream", res.status, (await res.text()).slice(0, 600))
       return { ok: false, unavailable: true, reason: "upstream_error" }
     }
-    const json = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
-    const text = json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("").trim() ?? ""
+    const json = (await res.json()) as {
+      output?: { content?: { type?: string; text?: string }[] }[]
+      candidates?: { content?: { parts?: { text?: string }[] } }[]
+      response?: string
+      text?: string
+    }
+    let text = ""
+    if (Array.isArray(json.output) && json.output.length > 0) {
+      text = json.output.flatMap((o) => o.content ?? []).map((p) => (p as { text?: string }).text ?? "").join("").trim()
+    }
+    if (!text && json.candidates?.[0]?.content?.parts) {
+      text = json.candidates[0].content.parts.map((p) => p.text ?? "").join("").trim()
+    }
+    if (!text && typeof json.response === "string") text = json.response.trim()
+    if (!text && typeof json.text === "string") text = json.text.trim()
     if (!text) return { ok: false, unavailable: true, reason: "upstream_error" }
     return { ok: true, content: text }
   } catch (e) {
