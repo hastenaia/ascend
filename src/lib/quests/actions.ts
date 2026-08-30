@@ -43,6 +43,35 @@ export async function createQuestAction(raw: CreateQuestInput & { xp_reward: num
     if (!ownedPhase || ownedPhase.length === 0) phaseId = null
   }
 
+  // Smooth fallback: if no parent at all, auto-attach to active/available phase
+  // Keeps the quests_parent constraint satisfied and makes "None" milestone feel intentional.
+  if (!milestoneId && !phaseId) {
+    const { data: fallback } = await supabase
+      .from("phases")
+      .select("id")
+      .eq("user_id", userId)
+      .in("status", ["active", "available"])
+      .order("status", { ascending: false }) // active first
+      .order("order_index", { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    if (fallback?.id) phaseId = fallback.id as string
+    else {
+      // No journey yet — give a friendly, actionable error instead of leaking Postgres constraint text
+      throw new Error("Start your journey first — create a phase to attach quests to.")
+    }
+  }
+
+  // Validate linked_skill exists (skills are global, but check prevents orphan UUIDs)
+  if (input.linked_skill) {
+    const { data: skillExists } = await supabase.from("skills").select("id").eq("id", input.linked_skill).limit(1).maybeSingle()
+    if (!skillExists) {
+      // Don't hard-fail — just drop the link for smoothness, but log via description
+      // We'll null it so the quest still creates
+      input.linked_skill = null
+    }
+  }
+
   const { data: inserted, error } = await supabase
     .from("quests")
     .insert({
@@ -64,11 +93,19 @@ export async function createQuestAction(raw: CreateQuestInput & { xp_reward: num
     .select("id")
     .single()
 
-  if (error) throw new Error(error.message)
+  if (error) {
+    // Translate low-level Postgres check violation into human copy
+    if (error.message.includes("quests_parent") || error.message.includes("check constraint")) {
+      throw new Error("Quest needs a phase or milestone — select one or start your journey.")
+    }
+    throw new Error(error.message)
+  }
 
   revalidatePath("/quests")
   revalidatePath("/dashboard")
   revalidatePath("/phase")
+  revalidatePath("/stats")
+  revalidatePath("/skills")
   return { id: inserted!.id }
 }
 

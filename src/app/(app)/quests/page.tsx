@@ -32,6 +32,8 @@ export default async function QuestsPage() {
         completedTodayCount={data.todays.completedTodayCount}
         milestones={(data.current?.milestones ?? []).map((m) => ({ id: m.id, title: m.title }))}
         skills={(skills as { id: string; name: string }[]) ?? []}
+        currentPhaseId={data.current?.id ?? null}
+        currentPhaseTitle={data.current?.title ?? null}
       />
     </PageTransition>
   )
