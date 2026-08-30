@@ -1,10 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { computeMomentumScore, momentumTiers, type MomentumDayRow } from "@/lib/momentum/model"
+import { gatherBehaviorFacts, type BehaviorFacts } from "@/lib/coach/behavior"
 
 export type CoachContext = {
   text: string
   activePhaseId: string | null
   activeGoalId: string | null
+  behavior: BehaviorFacts
 }
 
 function clip(s: string | null | undefined, n = 160): string {
@@ -25,7 +27,7 @@ export async function gatherCoachContext(supabase: SupabaseClient, userId: strin
   const today = new Date()
   const since21 = todayIso(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 20))
 
-  const [phasesRes, goalsRes, questsOpenRes, questDoneRes, userSkillsRes, statsRes, momRes, reflRes, journalRes, levelRes] = await Promise.all([
+  const [phasesRes, goalsRes, questsOpenRes, questDoneRes, userSkillsRes, statsRes, momRes, reflRes, journalRes, levelRes, profileRes] = await Promise.all([
     supabase.from("phases").select("id,title,objective,status,goal_id").eq("user_id", userId).order("order_index"),
     supabase.from("goals").select("id,title,status,priority,target_date").eq("user_id", userId).neq("status", "archived").limit(8),
     supabase.from("quests").select("title,difficulty,due_date,category").eq("user_id", userId).eq("status", "active").order("due_date", { ascending: true }).limit(10),
@@ -36,6 +38,7 @@ export async function gatherCoachContext(supabase: SupabaseClient, userId: strin
     supabase.from("reflections").select("body,entry_date,mood,tags").eq("user_id", userId).order("created_at", { ascending: false }).limit(5),
     supabase.from("reflections").select("entry_date,mood,tags").eq("user_id", userId).not("entry_date", "is", null).order("entry_date", { ascending: false }).limit(7),
     supabase.from("user_levels").select("level,xp").eq("user_id", userId).maybeSingle(),
+    supabase.from("profiles").select("experience_level, long_term_objectives, preferences").eq("id", userId).maybeSingle(),
   ])
 
   // Stats names + trends (character)
@@ -107,6 +110,12 @@ export async function gatherCoachContext(supabase: SupabaseClient, userId: strin
 
   const goals = (goalsRes.data as { id: string; title: string; status: string; priority: string; target_date: string | null }[] | null) ?? []
 
+  // User model (stated context — enables personalization without guessing)
+  const profileRow = profileRes.data as { experience_level: string | null; long_term_objectives: string | null; preferences: { coachStyle?: string } | null } | null
+
+  // Behavioral facts (finish rates, postpones, skips) — deterministic, feeds the FACTS block
+  const behavior = await gatherBehaviorFacts(supabase, userId)
+
   // Momentum via shared model
   type Row = MomentumDayRow & { recovery_kinds?: string[] }
   const momRows = ((momRes.data as Row[] | null) ?? []).map((r) => ({ date: r.date, score: r.score ?? 0, recovery: !!r.recovery }))
@@ -124,9 +133,18 @@ export async function gatherCoachContext(supabase: SupabaseClient, userId: strin
     lines.push(`OPEN QUESTS: ${openQuests.map((q) => `${clip(q.title, 50)} (${q.difficulty}/${q.category}${q.due_date ? `, due ${q.due_date}` : ""})`).join("; ")}`)
   }
   lines.push(`COMPLETED QUESTS TOTAL: ${(questDoneRes.count ?? 0)}`)
+  if (behavior.text) lines.push(behavior.text)
 
   if (goals.length > 0) {
     lines.push(`GOALS: ${goals.map((g) => `${clip(g.title, 50)} [${g.status}/${g.priority}${g.target_date ? `, target ${g.target_date}` : ""}]`).join("; ")}`)
+  }
+
+  if (profileRow) {
+    const userBits: string[] = []
+    if (profileRow.experience_level) userBits.push(`experience: ${profileRow.experience_level}`)
+    if (profileRow.preferences?.coachStyle) userBits.push(`coach style: ${profileRow.preferences.coachStyle}`)
+    if (userBits.length > 0) lines.push(`USER MODEL: ${userBits.join("; ")} (stated by the user)`)
+    if (profileRow.long_term_objectives) lines.push(`LONG-TERM OBJECTIVES: ${clip(profileRow.long_term_objectives, 200)}`)
   }
 
   if (skillsLine) lines.push(skillsLine)
@@ -151,6 +169,7 @@ export async function gatherCoachContext(supabase: SupabaseClient, userId: strin
     text: lines.join("\n") || "New user — no activity yet.",
     activePhaseId: activePhase?.id ?? null,
     activeGoalId: goals.find((g) => g.status === "active")?.id ?? null,
+    behavior: behavior.facts,
   }
 }
 

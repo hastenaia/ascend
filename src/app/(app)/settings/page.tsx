@@ -4,10 +4,34 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Badge } from "@/components/ui/badge"
+import { createClient } from "@/lib/supabase/server"
+import { CoachProfileForm } from "@/components/settings/coach-profile"
+import type { CoachStyle, ProfileExperienceLevel, ProfilePreferences } from "@/types/database"
 
 export const metadata = { title: "Settings — Ascend" }
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  let profile = {
+    experience_level: null as ProfileExperienceLevel | null,
+    long_term_objectives: null as string | null,
+    coach_style: null as CoachStyle | null,
+  }
+  if (user) {
+    const { data } = await supabase.from("profiles").select("experience_level, long_term_objectives, preferences").eq("id", user.id).maybeSingle()
+    if (data) {
+      profile = {
+        experience_level: (data.experience_level as ProfileExperienceLevel | null) ?? null,
+        long_term_objectives: (data.long_term_objectives as string | null) ?? null,
+        coach_style: ((data.preferences as ProfilePreferences) ?? {}).coachStyle ?? null,
+      }
+    }
+  }
+
   return (
     <PageTransition>
       <div className="space-y-6">
@@ -45,7 +69,17 @@ export default function SettingsPage() {
               </p>
             </CardContent>
           </Card>
-        </div>
+</div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Coach profile</CardTitle>
+            <CardDescription>Give your AI coach real context about you — it sharpens quests, plans, and reflections.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <CoachProfileForm initial={profile} />
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

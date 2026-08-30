@@ -13,7 +13,7 @@ import { QuestDetail } from "@/components/quests/quest-detail"
 import { QuestFilters, defaultFilters, type QuestFilterState } from "@/components/quests/quest-filters"
 import { QuestCompletionAnimation } from "@/components/quests/quest-completion-animation"
 import { QuestCreateDialog } from "@/components/quests/quest-create-dialog"
-import { completeQuestAction, deleteQuestAction } from "@/lib/quests/actions"
+import { completeQuestAction, deleteQuestAction, postponeQuestAction, setQuestEvidenceAction, skipQuestAction } from "@/lib/quests/actions"
 import { announceUnlockedAchievements } from "@/lib/achievements/events"
 import type { QuestRow } from "@/lib/quests/queries"
 import type { LevelProgress as LevelProgressType } from "@/lib/levels"
@@ -81,6 +81,51 @@ export function QuestsClient({ activeQuests, completedQuests, level, todaysCount
       startTransition(() => router.refresh())
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Could not delete quest")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function handlePostpone(quest: QuestRow) {
+    if (busyId) return
+    setBusyId(quest.id)
+    try {
+      const res = await postponeQuestAction(quest.id, 1)
+      setDetail((d) => (d?.id === quest.id ? { ...d, postponed_count: res.postponed_count, last_postponed_at: new Date().toISOString() } : d))
+      toast.success("Postponed by a day")
+      startTransition(() => router.refresh())
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Could not postpone quest")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function handleSkip(quest: QuestRow) {
+    if (busyId) return
+    setBusyId(quest.id)
+    try {
+      const res = await skipQuestAction(quest.id)
+      setDetail((d) => (d?.id === quest.id ? { ...d, skipped_count: res.skipped_count, last_skipped_at: new Date().toISOString() } : d))
+      toast.success("Quest skipped — recorded honestly, no XP awarded")
+      startTransition(() => router.refresh())
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Could not skip quest")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function handleSaveEvidence(quest: QuestRow, evidence: string) {
+    if (busyId) return
+    setBusyId(quest.id)
+    try {
+      await setQuestEvidenceAction(quest.id, evidence)
+      setDetail((d) => (d?.id === quest.id ? { ...d, evidence: evidence.trim() === "" ? null : evidence.trim() } : d))
+      toast.success(evidence.trim() ? "Evidence saved" : "Evidence cleared")
+      startTransition(() => router.refresh())
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Could not save evidence")
     } finally {
       setBusyId(null)
     }
@@ -199,6 +244,9 @@ export function QuestsClient({ activeQuests, completedQuests, level, todaysCount
         onOpenChange={setDetailOpen}
         onComplete={handleComplete}
         onDelete={handleDelete}
+        onPostpone={handlePostpone}
+        onSkip={handleSkip}
+        onSaveEvidence={handleSaveEvidence}
         busy={busyId !== null}
         milestoneTitle={milestoneTitleFor(detail?.milestone_id ?? null)}
         skillName={skills.find((s) => s.id === detail?.linked_skill)?.name ?? null}

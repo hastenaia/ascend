@@ -17,6 +17,17 @@ export const profileSchema = z.object({
 
 export type ProfileValues = z.infer<typeof profileSchema>
 
+export const EXPERIENCE_LEVELS = ["beginner", "intermediate", "advanced"] as const
+export const COACH_STYLES = ["balanced", "socratic", "direct"] as const
+
+export const coachProfileSchema = z.object({
+  experience_level: z.enum(EXPERIENCE_LEVELS).optional().nullable(),
+  long_term_objectives: z.string().trim().max(1000, "At most 1000 characters").optional().nullable(),
+  coach_style: z.enum(COACH_STYLES).optional().nullable(),
+})
+
+export type CoachProfileInput = z.infer<typeof coachProfileSchema>
+
 export function normalizeUsername(input: string): string {
   return input.trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 30)
 }

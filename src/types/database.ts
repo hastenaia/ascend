@@ -39,6 +39,13 @@ export type FinalChallengeJson = {
   status: "locked" | "available" | "completed"
 } | null
 
+export type ProfileExperienceLevel = "beginner" | "intermediate" | "advanced"
+export type CoachStyle = "balanced" | "socratic" | "direct"
+
+export type ProfilePreferences = {
+  coachStyle?: CoachStyle
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -93,9 +100,9 @@ export type Database = {
         }
       }
       profiles: {
-        Row: { id: string; username: string | null; display_name: string | null; avatar_url: string | null; bio: string | null; created_at: string; updated_at: string }
-        Insert: { id: string; username?: string | null; display_name?: string | null; avatar_url?: string | null; bio?: string | null; created_at?: string; updated_at?: string }
-        Update: { id?: string; username?: string | null; display_name?: string | null; avatar_url?: string | null; bio?: string | null; created_at?: string; updated_at?: string }
+        Row: { id: string; username: string | null; display_name: string | null; avatar_url: string | null; bio: string | null; experience_level: ProfileExperienceLevel | null; preferences: ProfilePreferences; long_term_objectives: string | null; created_at: string; updated_at: string }
+        Insert: { id: string; username?: string | null; display_name?: string | null; avatar_url?: string | null; bio?: string | null; experience_level?: ProfileExperienceLevel | null; preferences?: ProfilePreferences; long_term_objectives?: string | null; created_at?: string; updated_at?: string }
+        Update: { id?: string; username?: string | null; display_name?: string | null; avatar_url?: string | null; bio?: string | null; experience_level?: ProfileExperienceLevel | null; preferences?: ProfilePreferences; long_term_objectives?: string | null; created_at?: string; updated_at?: string }
       }
       goals: {
         Row: {
@@ -272,6 +279,12 @@ export type Database = {
           recurrence: Recurrence
           linked_skill: string | null
           completed_at: string | null
+          postponed_count: number
+          last_postponed_at: string | null
+          skipped_count: number
+          last_skipped_at: string | null
+          evidence: string | null
+          adapted_from_difficulty: QuestDifficulty | null
           created_at: string
           updated_at: string
         }
@@ -293,6 +306,12 @@ export type Database = {
           recurrence?: Recurrence
           linked_skill?: string | null
           completed_at?: string | null
+          postponed_count?: number
+          last_postponed_at?: string | null
+          skipped_count?: number
+          last_skipped_at?: string | null
+          evidence?: string | null
+          adapted_from_difficulty?: QuestDifficulty | null
           created_at?: string
           updated_at?: string
         }
@@ -314,6 +333,12 @@ export type Database = {
           recurrence?: Recurrence
           linked_skill?: string | null
           completed_at?: string | null
+          postponed_count?: number
+          last_postponed_at?: string | null
+          skipped_count?: number
+          last_skipped_at?: string | null
+          evidence?: string | null
+          adapted_from_difficulty?: QuestDifficulty | null
           created_at?: string
           updated_at?: string
         }

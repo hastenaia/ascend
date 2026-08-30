@@ -1,11 +1,12 @@
 "use client"
 import * as React from "react"
-import { Clock, Calendar, Repeat, Zap, Trash2, Target, Sparkles } from "lucide-react"
+import { Clock, Calendar, Repeat, Zap, Trash2, Target, Sparkles, Save, SkipForward, CalendarClock } from "lucide-react"
 import Link from "next/link"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { Textarea } from "@/components/ui/textarea"
 import { difficultyStyles } from "@/components/quests/quest-card"
 import type { QuestRow } from "@/lib/quests/queries"
 
@@ -15,6 +16,9 @@ type Props = {
   onOpenChange: (v: boolean) => void
   onComplete?: (quest: QuestRow) => void
   onDelete?: (quest: QuestRow) => void
+  onPostpone?: (quest: QuestRow) => void
+  onSkip?: (quest: QuestRow) => void
+  onSaveEvidence?: (quest: QuestRow, evidence: string) => void
   busy?: boolean
   milestoneTitle?: string | null
   skillName?: string | null
@@ -31,7 +35,17 @@ function Row({ icon: Icon, label, value }: { icon: React.ElementType; label: str
   )
 }
 
-export function QuestDetail({ quest, open, onOpenChange, onComplete, onDelete, busy, milestoneTitle, skillName }: Props) {
+export function QuestDetail({ quest, open, onOpenChange, onComplete, onDelete, onPostpone, onSkip, onSaveEvidence, busy, milestoneTitle, skillName }: Props) {
+  const [evidence, setEvidence] = React.useState("")
+  const [evidenceQuestId, setEvidenceQuestId] = React.useState<string | null>(null)
+
+  // Reset evidence state when a different quest is opened (render-phase adjustment)
+  if (quest && quest.id !== evidenceQuestId) {
+    setEvidenceQuestId(quest.id)
+    setEvidence(quest.evidence ?? "")
+  }
+  const evidenceDirty = evidence !== (quest?.evidence ?? "")
+
   if (!quest) return null
   const done = quest.status === "completed"
 
@@ -81,6 +95,31 @@ export function QuestDetail({ quest, open, onOpenChange, onComplete, onDelete, b
           {done && quest.completed_at && (
             <p className="text-xs text-emerald-600 dark:text-emerald-400">Completed {new Date(quest.completed_at).toLocaleString()}</p>
           )}
+          {(quest.postponed_count > 0 || quest.skipped_count > 0) && (
+            <p className="text-xs text-muted-foreground">
+              Postponed {quest.postponed_count}× · skipped {quest.skipped_count}×
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-2 rounded-xl border bg-muted/30 p-4">
+          <p className="text-sm font-medium leading-none">Evidence of growth</p>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">What can you now do that you couldn&apos;t before this quest? Honest proof beats guesses.</p>
+          <Textarea
+            rows={3}
+            value={evidence}
+            onChange={(e) => setEvidence(e.target.value)}
+            disabled={busy}
+            placeholder="e.g. I can now run 5k without stopping, or I shipped a feature end-to-end."
+            className="min-h-[70px] resize-none text-sm"
+          />
+          {onSaveEvidence && (
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" disabled={busy || !evidenceDirty} onClick={() => onSaveEvidence(quest, evidence)}>
+                <Save className="mr-1 size-3.5" /> {quest.evidence ? "Update" : "Save evidence"}
+              </Button>
+            </div>
+          )}
         </div>
 
         <Separator />
@@ -91,7 +130,7 @@ export function QuestDetail({ quest, open, onOpenChange, onComplete, onDelete, b
           </div>
         )}
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {!done && onDelete && (
             <Button
               variant="outline"
@@ -104,6 +143,32 @@ export function QuestDetail({ quest, open, onOpenChange, onComplete, onDelete, b
               }}
             >
               <Trash2 className="size-3.5" /> Delete
+            </Button>
+          )}
+          {!done && onPostpone && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={(e) => {
+                e.stopPropagation()
+                onPostpone(quest)
+              }}
+            >
+              <CalendarClock className="size-3.5" /> Postpone
+            </Button>
+          )}
+          {!done && onSkip && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={(e) => {
+                e.stopPropagation()
+                onSkip(quest)
+              }}
+            >
+              <SkipForward className="size-3.5" /> Skip
             </Button>
           )}
           {!done && onComplete && (

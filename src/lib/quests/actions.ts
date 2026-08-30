@@ -134,3 +134,105 @@ export async function deleteQuestAction(questId: string): Promise<void> {
   revalidatePath("/stats")
   revalidatePath("/journal")
 }
+
+function revalidateQuestPaths(): void {
+  for (const p of ["/quests", "/dashboard", "/phase", "/stats", "/skills", "/journal"]) revalidatePath(p)
+}
+
+/**
+ * Postpone a quest: records the postpone honestly (count + timestamp) and, for
+ * one-time quests, pushes the due date forward by `days`. Recurring quests are
+ * still governed by their recurrence window, so only the behavior marker is set.
+ */
+export async function postponeQuestAction(questId: string, days = 1): Promise<{ ok: true; postponed_count: number }> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const userId = mustUserId(user)
+  const d = Math.min(90, Math.max(1, Math.round(days)))
+
+  const { data: quest } = await supabase
+    .from("quests")
+    .select("id, recurrence, due_date, postponed_count")
+    .eq("id", questId)
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .maybeSingle()
+  if (!quest) throw new Error("Quest not found or not active")
+
+  let due_date: string | null = quest.due_date
+  if (quest.recurrence === "none") {
+    const base = quest.due_date ?? new Date().toISOString().slice(0, 10)
+    const shifted = new Date(base + "T00:00:00Z")
+    shifted.setUTCDate(shifted.getUTCDate() + d)
+    due_date = shifted.toISOString().slice(0, 10)
+  }
+
+  const { data: updated, error } = await supabase
+    .from("quests")
+    .update({ postponed_count: (quest.postponed_count ?? 0) + 1, last_postponed_at: new Date().toISOString(), due_date })
+    .eq("id", questId)
+    .eq("user_id", userId)
+    .select("postponed_count")
+    .single()
+  if (error) throw new Error(error.message)
+
+  revalidateQuestPaths()
+  return { ok: true, postponed_count: updated?.postponed_count ?? 0 }
+}
+
+/**
+ * Skip a quest: records the skip honestly (count + timestamp) without awarding
+ * XP or altering recurring due logic. The pattern engine reads these markers to
+ * detect avoidance (e.g. repeatedly postponing the same difficulty).
+ */
+export async function skipQuestAction(questId: string): Promise<{ ok: true; skipped_count: number }> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const userId = mustUserId(user)
+
+  const { data: quest } = await supabase
+    .from("quests")
+    .select("id, skipped_count")
+    .eq("id", questId)
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .maybeSingle()
+  if (!quest) throw new Error("Quest not found or not active")
+
+  const { data: updated, error } = await supabase
+    .from("quests")
+    .update({ skipped_count: (quest.skipped_count ?? 0) + 1, last_skipped_at: new Date().toISOString() })
+    .eq("id", questId)
+    .eq("user_id", userId)
+    .select("skipped_count")
+    .single()
+  if (error) throw new Error(error.message)
+
+  revalidateQuestPaths()
+  return { ok: true, skipped_count: updated?.skipped_count ?? 0 }
+}
+
+/** Record evidence of growth on a quest you own (active or completed). */
+export async function setQuestEvidenceAction(questId: string, evidence: string): Promise<{ ok: true }> {
+  const trimmed = evidence.trim()
+  if (trimmed.length > 2000) throw new Error("Evidence must be 2000 characters or fewer")
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const userId = mustUserId(user)
+
+  const { error } = await supabase
+    .from("quests")
+    .update({ evidence: trimmed === "" ? null : trimmed })
+    .eq("id", questId)
+    .eq("user_id", userId)
+  if (error) throw new Error(error.message)
+
+  revalidateQuestPaths()
+  return { ok: true }
+}
