@@ -53,16 +53,18 @@ export function QuestCreateDialog({ open, onOpenChange, milestones, skills, curr
     getValues,
     setValue,
     watch,
-    formState: { errors, isValid },
+    formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(createQuestSchema) as unknown as Resolver<FormValues>,
-    mode: "onChange",
+    mode: "onSubmit",
     defaultValues: { title: "", description: "", category: "general", difficulty: "medium", xp_reward: XP_BANDS.medium.default, recurrence: "none" },
   })
 
-  const [difficulty, setDifficulty] = React.useState<QuestDifficultyValue>("medium")
+  const watchedDifficulty = watch("difficulty") as QuestDifficultyValue | undefined
+  const watchedCategory = watch("category") as CreateQuestInput["category"] | undefined
+  const difficulty: QuestDifficultyValue = watchedDifficulty ?? "medium"
+  const category: CreateQuestInput["category"] = watchedCategory ?? "general"
   const band = XP_BANDS[difficulty] ?? XP_BANDS.medium
-  const category = watch("category") as CreateQuestInput["category"]
   const statPreview = React.useMemo(() => statsForCategory(category), [category])
 
   // Reset form when dialog closes for a fresh open animation
@@ -70,42 +72,49 @@ export function QuestCreateDialog({ open, onOpenChange, milestones, skills, curr
     if (!open) {
       const t = setTimeout(() => {
         reset({ title: "", description: "", category: "general", difficulty: "medium", xp_reward: XP_BANDS.medium.default, recurrence: "none", milestone_id: null, linked_skill: null })
-        setDifficulty("medium")
       }, 180)
       return () => clearTimeout(t)
     }
   }, [open, reset])
 
-  // Keep difficulty state synced with form value (handles programmatic resets)
+  // Keep XP in band when difficulty changes — effect is more reliable than register onChange
   React.useEffect(() => {
-    const sub = watch((v) => {
-      if (v.difficulty && v.difficulty !== difficulty) setDifficulty(v.difficulty as QuestDifficultyValue)
-    })
-    return () => sub.unsubscribe()
-  }, [watch, difficulty])
+    const d = watchedDifficulty
+    if (!d) return
+    const b = XP_BANDS[d as QuestDifficultyValue]
+    if (!b) return
+    const cur = Number(getValues("xp_reward"))
+    if (!Number.isFinite(cur) || cur < b.min || cur > b.max) {
+      setValue("xp_reward", b.default, { shouldValidate: false })
+    }
+  }, [watchedDifficulty, getValues, setValue])
 
   function handleDifficultyChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const d = e.target.value as QuestDifficultyValue
-    setDifficulty(d)
     const b = XP_BANDS[d]
     const cur = Number(getValues("xp_reward") ?? 0)
-    if (cur < b.min || cur > b.max) setValue("xp_reward", b.default, { shouldValidate: true })
+    if (!Number.isFinite(cur) || cur < b.min || cur > b.max) setValue("xp_reward", b.default, { shouldValidate: false })
   }
 
   async function onSubmit(values: FormValues) {
     if (busy) return
     setBusy(true)
     try {
+      // Normalize NaN from number inputs (cleared fields become NaN with valueAsNumber)
+      const normXp = Number.isNaN(values.xp_reward as unknown as number) ? XP_BANDS.medium.default : values.xp_reward
+      const normDuration = Number.isNaN(values.estimated_duration as unknown as number) ? null : (values.estimated_duration ?? null)
+      const normDue = values.due_date && (values.due_date as string).trim() === "" ? null : (values.due_date ?? null)
       // Client-side phase resolution: milestone takes precedence, otherwise use current phase
       // Server also has fallback, but sending explicit phase_id makes intent clear and snappy
       const payload: CreateQuestInput = {
         ...values,
+        xp_reward: normXp,
+        estimated_duration: normDuration,
+        due_date: normDue,
         phase_id: values.milestone_id ? null : (currentPhaseId ?? null),
         milestone_id: values.milestone_id || null,
         linked_skill: values.linked_skill || null,
         description: values.description || null,
-        due_date: values.due_date || null,
-        estimated_duration: values.estimated_duration ?? null,
       }
 
       await createQuestAction(payload as CreateQuestInput & { xp_reward: number })
@@ -155,7 +164,15 @@ export function QuestCreateDialog({ open, onOpenChange, milestones, skills, curr
           </DialogHeader>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 px-6 pb-6 pt-4">
+        <form
+          noValidate
+          onSubmit={handleSubmit(onSubmit, (errs) => {
+            const first = Object.values(errs)[0] as { message?: string } | undefined
+            toast.error("Check your quest", { description: first?.message ?? "Please fix the highlighted fields." })
+            console.error("[quest-create] validation failed", errs)
+          })}
+          className="space-y-5 px-6 pb-6 pt-4"
+        >
           {/* Title */}
           <div className="space-y-1.5">
             <Label htmlFor="q-title" className="text-xs font-medium">
@@ -327,7 +344,7 @@ export function QuestCreateDialog({ open, onOpenChange, milestones, skills, curr
           <Button
             type="submit"
             className="group w-full h-11 rounded-xl text-sm font-semibold shadow-sm transition-all active:scale-[0.98] disabled:opacity-60"
-            disabled={busy || (!isValid && Object.keys(errors).length > 0)}
+            disabled={busy}
           >
             {busy ? (
               <span className="inline-flex items-center gap-2">
