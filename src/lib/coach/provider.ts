@@ -38,11 +38,11 @@ async function callGemini(messages: ChatMessage[], _opts: { maxTokens?: number; 
   if (!key) return { ok: false, unavailable: true, reason: "no_key" }
   const systemMsg = messages.find((m) => m.role === "system")
   const systemInstruction = systemMsg?.content ?? ""
-  const input = messages
+  const step_list = messages
     .filter((m) => m.role !== "system")
     .map((m) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      content: [{ type: "text", text: m.content }],
+      type: m.role === "assistant" ? "model_output" : "user_input",
+      content: m.content,
     }))
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 30_000)
@@ -53,7 +53,7 @@ async function callGemini(messages: ChatMessage[], _opts: { maxTokens?: number; 
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
         model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
-        input,
+        input: { step_list },
         system_instruction: systemInstruction,
       }),
       signal: controller.signal,
@@ -63,13 +63,20 @@ async function callGemini(messages: ChatMessage[], _opts: { maxTokens?: number; 
       return { ok: false, unavailable: true, reason: "upstream_error" }
     }
     const json = (await res.json()) as {
+      steps?: { type?: string; content?: string; text?: string }[]
       output?: { content?: { type?: string; text?: string }[] }[]
       candidates?: { content?: { parts?: { text?: string }[] } }[]
       response?: string
       text?: string
     }
     let text = ""
-    if (Array.isArray(json.output) && json.output.length > 0) {
+    if (Array.isArray(json.steps) && json.steps.length > 0) {
+      const modelSteps = json.steps.filter((s) => s.type === "model_output")
+      const last = modelSteps[modelSteps.length - 1] ?? json.steps[json.steps.length - 1]
+      text = ((last as { content?: string; text?: string })?.content ?? (last as { text?: string })?.text ?? "").trim()
+      if (!text) text = modelSteps.map((s) => (s as { content?: string }).content ?? "").join("").trim()
+    }
+    if (!text && Array.isArray(json.output) && json.output.length > 0) {
       text = json.output.flatMap((o) => o.content ?? []).map((p) => (p as { text?: string }).text ?? "").join("").trim()
     }
     if (!text && json.candidates?.[0]?.content?.parts) {

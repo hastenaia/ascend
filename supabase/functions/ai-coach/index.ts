@@ -231,15 +231,15 @@ ${SAFETY_RULES}
 ${contextText}
 === END DATA ===`;
 
-  // Build Interactions API input: preserve history as ordered turns + current message
-  // Interactions API expects: { model, input: [{role, content:[{type:"text", text}]}], system_instruction }
-  const interactionInput: { role: string; content: { type: string; text: string }[] }[] = [];
+  // Build Interactions API step_list: steps-based schema (not turn_list)
+  // Transform Ascend coach_messages → step_list: user_input / model_output with visible text only
+  const step_list: { type: string; content: string }[] = [];
   for (const m of history.slice(-20)) {
     if (!m.content?.trim()) continue;
-    const role = m.role === "assistant" ? "model" : "user";
-    interactionInput.push({ role, content: [{ type: "text", text: m.content.slice(0, 6000) }] });
+    const type = m.role === "assistant" ? "model_output" : "user_input";
+    step_list.push({ type, content: m.content.slice(0, 6000) });
   }
-  interactionInput.push({ role: "user", content: [{ type: "text", text: message }] });
+  step_list.push({ type: "user_input", content: message });
 
   const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/interactions`;
 
@@ -252,7 +252,7 @@ ${contextText}
       },
       body: JSON.stringify({
         model: "gemini-3.6-flash",
-        input: interactionInput,
+        input: { step_list },
         system_instruction: systemInstruction,
       }),
     });
@@ -271,16 +271,26 @@ ${contextText}
     }
 
     const json = await geminiRes.json() as {
-      // Interactions API: { output: [{ content: [{type,text}] }], interaction_id, ... } OR legacy candidates fallback
+      // Interactions API steps-based: { steps: [{type, content}], ... } OR legacy fallbacks
+      steps?: { type?: string; content?: string; text?: string }[];
       output?: { content?: { type?: string; text?: string }[]; role?: string }[];
       candidates?: { content?: { parts?: { text?: string }[] } }[];
       response?: string;
       text?: string;
       promptFeedback?: unknown;
     };
-    // Prefer Interactions output, fallback to candidates for compatibility
+    // Prefer Interactions steps: find last model_output
     let text = "";
-    if (Array.isArray(json.output) && json.output.length > 0) {
+    if (Array.isArray(json.steps) && json.steps.length > 0) {
+      const modelSteps = json.steps.filter((s) => s.type === "model_output");
+      const last = modelSteps[modelSteps.length - 1] ?? json.steps[json.steps.length - 1];
+      text = ((last as { content?: string; text?: string })?.content ?? (last as { text?: string })?.text ?? "").trim();
+      // Fallback: join all model_output contents if last empty
+      if (!text) {
+        text = modelSteps.map((s) => (s as { content?: string }).content ?? "").join("").trim();
+      }
+    }
+    if (!text && Array.isArray(json.output) && json.output.length > 0) {
       text = json.output
         .flatMap((o) => o.content ?? [])
         .map((p) => (p as { text?: string }).text ?? "")
