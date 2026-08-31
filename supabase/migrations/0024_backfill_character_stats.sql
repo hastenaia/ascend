@@ -237,13 +237,16 @@ grant execute on function public.complete_quest(uuid) to authenticated;
 -- =============================================================================
 -- 2a) Backfill quest -> stat_history (category weights; dedup by source_key)
 --     Weights mirror CATEGORY_STAT_WEIGHTS in src/lib/stats.ts
+--
+-- NOTE: modern quest completions store the quest id in xp_transactions.source_id
+-- (NOT quest_id, which is null since 0005). Join on source_id for quest-source rows.
 -- =============================================================================
 with txs as (
   select x.id tx_id, x.user_id, x.amount, x.source_key, x.description,
          coalesce(q.category, 'general') cat
   from public.xp_transactions x
-  join public.quests q on q.id = x.quest_id
-  where x.source_type = 'quest'
+  join public.quests q on q.id = x.source_id
+  where x.source_type = 'quest' and x.source like 'quest:%'
 ),
 weights(cat, stat_slug, weight) as (values
   ('physical','physical',1.00),
@@ -271,8 +274,8 @@ where not exists (select 1 from public.stat_history h where h.user_id = p.user_i
 with txs as (
   select x.user_id, x.amount, x.source_key, x.id tx_id, q.linked_skill
   from public.xp_transactions x
-  join public.quests q on q.id = x.quest_id
-  where x.source_type = 'quest' and q.linked_skill is not null
+  join public.quests q on q.id = x.source_id
+  where x.source_type = 'quest' and x.source like 'quest:%' and q.linked_skill is not null
 ),
 targets as (
   select user_id, linked_skill skill_id, amount delta, source_key || ':skill:self' sk, tx_id from txs
