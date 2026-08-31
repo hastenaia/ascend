@@ -4,7 +4,9 @@ import { PageTransition } from "@/components/feedback/page-transition"
 import { Flag } from "lucide-react"
 import { GoalCard } from "@/components/goals/goal-card"
 import { GoalCreateDialog } from "@/components/goals/goal-create-dialog"
+import { GoalConflictBanner } from "@/components/goals/goal-conflict-banner"
 import { getGoalsOverview } from "@/lib/goals/queries"
+import { getGoalsQuality } from "@/lib/goals/intel-ui"
 
 export const metadata = { title: "Goals — Ascend" }
 export const dynamic = "force-dynamic"
@@ -14,6 +16,7 @@ export default async function GoalsPage() {
   const { data: { user } } = await supabase.auth.getUser()
 
   const goals = user ? await getGoalsOverview(supabase, user.id).catch(() => []) : []
+  const quality = user ? await getGoalsQuality(supabase, user.id, goals).catch(() => new Map<string, never>()) : new Map<string, never>()
   const activeCount = goals.filter((g) => g.status === "active").length
 
   return (
@@ -30,6 +33,8 @@ export default async function GoalsPage() {
           <GoalCreateDialog />
         </div>
 
+        <GoalConflictBanner />
+
         {goals.length === 0 ? (
           <EmptyState
             icon={Flag}
@@ -39,7 +44,7 @@ export default async function GoalsPage() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {goals.map((goal) => (
-              <GoalCard key={goal.id} goal={goal} />
+              <GoalCard key={goal.id} goal={goal} quality={quality.get(goal.id)} />
             ))}
           </div>
         )}

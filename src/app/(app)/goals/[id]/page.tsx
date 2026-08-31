@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server"
 import { PageTransition } from "@/components/feedback/page-transition"
 import { GoalDetail } from "@/components/goals/goal-detail"
 import { GoalProgress } from "@/components/goals/goal-progress"
+import { GoalUnderstandPanel } from "@/components/goals/goal-understand-panel"
+import { GoalDecomposePanel } from "@/components/goals/goal-decompose-panel"
 import { getGoalDetail, getJourneyBlueprints } from "@/lib/goals/queries"
 import { cn } from "@/lib/utils"
 
@@ -108,6 +110,12 @@ export default async function GoalDetailPage({ params }: { params: Promise<{ id:
 
         {/* CURRENT PHASE / NEXT MILESTONE / RECOMMENDED QUESTS (interactive) */}
         <GoalDetail data={detail} blueprints={blueprints} />
+
+        {/* P2.1 Goal Intelligence: Understand + Decompose (proposal-only, user-confirmed) */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <GoalUnderstandPanel goalId={goal.id} />
+          <GoalDecomposePanel goalId={goal.id} />
+        </div>
 
         {!detail.activePhase && phases.length > 0 && (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
