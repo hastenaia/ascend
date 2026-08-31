@@ -100,7 +100,10 @@ async function callGemini(messages: ChatMessage[], _opts: { maxTokens?: number; 
     }
     if (!text && typeof json.response === "string") text = json.response.trim()
     if (!text && typeof json.text === "string") text = json.text.trim()
-    if (!text) return { ok: false, unavailable: true, reason: "upstream_error" }
+    if (!text) {
+      console.error("[coach][diag] gemini returned 200 but response had no parseable text; keys:", Object.keys(json).join(","), "; input messages:", messages.length)
+      return { ok: false, unavailable: true, reason: "upstream_error" }
+    }
     return { ok: true, content: text }
   } catch (e) {
     console.error("[coach] gemini call failed", e instanceof Error ? e.message : e)

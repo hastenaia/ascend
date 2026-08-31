@@ -115,12 +115,14 @@ Do NOT include markdown fences.`,
   ]
 
   const result = await callModel(messages, { maxTokens: 500, temperature: 0.5 })
+  console.error("[coach][diag] suggest-adapt callModel ok:", result.ok)
   if (!result.ok) {
     const detail =
       result.detail ??
       (result.reason === "no_key"
         ? "No AI provider key configured (GEMINI_API_KEY / AI_API_KEY / OPENAI_API_KEY)."
         : "Upstream model error — see server console.")
+    console.error("[coach][diag] suggest-adapt -> ai_request failure; reason:", result.reason, "detail:", detail)
     return fail({ ok: false, unavailable: true, ...devDebug({ stage: "ai_request", reason: result.reason, detail }) })
   }
 
@@ -136,8 +138,10 @@ Do NOT include markdown fences.`,
   }
 
   const parsed = adaptQuestProposalSchema.safeParse({ ...raw, xp_reward: typeof raw.xp_reward === "string" ? Number(raw.xp_reward) : raw.xp_reward })
+  console.error("[coach][diag] suggest-adapt schema success:", parsed.success)
   if (!parsed.success) {
     const issues = parsed.error.issues.slice(0, 3).map((i) => `${i.path.join(".") || "root"}: ${i.message}`)
+    console.error("[coach][diag] suggest-adapt -> zod_validation failure; issues:", issues.join("; "))
     return fail({
       ok: false,
       unavailable: true,
