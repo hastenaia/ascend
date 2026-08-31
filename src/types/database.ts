@@ -415,6 +415,73 @@ export type Database = {
         Insert: { id?: string; user_id: string; level?: number; xp?: number; created_at?: string; updated_at?: string }
         Update: { id?: string; user_id?: string; level?: number; xp?: number; created_at?: string; updated_at?: string }
       }
+      ai_memory: {
+        Row: {
+          id: string
+          user_id: string
+          kind: string
+          summary: string
+          importance: number
+          source_ref: Json
+          approved: boolean
+          revoked: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          kind: string
+          summary: string
+          importance?: number
+          source_ref?: Json
+          approved?: boolean
+          revoked?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          kind?: string
+          summary?: string
+          importance?: number
+          source_ref?: Json
+          approved?: boolean
+          revoked?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      ai_events: {
+        Row: {
+          id: string
+          user_id: string
+          kind: string
+          action: string
+          proposal: Json
+          source_ref: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          kind: string
+          action: string
+          proposal?: Json
+          source_ref?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          kind?: string
+          action?: string
+          proposal?: Json
+          source_ref?: Json
+          created_at?: string
+        }
+      }
       // remaining tables loosely typed
       [key: string]: { Row: Record<string, unknown>; Insert: Record<string, unknown>; Update: Record<string, unknown> }
     }

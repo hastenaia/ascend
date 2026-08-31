@@ -14,6 +14,8 @@
 
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string }
 
+export type ModelCallOptions = { maxTokens?: number; temperature?: number }
+
 export type ModelResult =
   | { ok: true; content: string }
   | { ok: false; unavailable: true; reason: "no_key" | "upstream_error"; detail?: string }
@@ -22,7 +24,7 @@ export function coachConfigured(): boolean {
   return !!(process.env.GEMINI_API_KEY || process.env.AI_API_KEY || process.env.OPENAI_API_KEY)
 }
 
-function geminiKey(): string | undefined {
+export function geminiKey(): string | undefined {
   return process.env.GEMINI_API_KEY
 }
 function legacyApiKey(): string | undefined {
@@ -32,8 +34,7 @@ function legacyBaseUrl(): string {
   return (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "")
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function callGemini(messages: ChatMessage[], _opts: { maxTokens?: number; temperature?: number }): Promise<ModelResult> {
+export async function callGemini(messages: ChatMessage[], _opts: ModelCallOptions = {}): Promise<ModelResult> {
   const key = geminiKey()
   if (!key) return { ok: false, unavailable: true, reason: "no_key" }
   const systemMsg = messages.find((m) => m.role === "system")
@@ -148,7 +149,7 @@ async function callLegacy(messages: ChatMessage[], opts: { maxTokens?: number; t
   }
 }
 
-export async function callModel(messages: ChatMessage[], opts: { maxTokens?: number; temperature?: number } = {}): Promise<ModelResult> {
+export async function callModel(messages: ChatMessage[], opts: ModelCallOptions = {}): Promise<ModelResult> {
   if (geminiKey()) return callGemini(messages, opts)
   return callLegacy(messages, opts)
 }
