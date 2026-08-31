@@ -67,3 +67,38 @@ export async function deleteAiMemory(client: RpcClient, memoryId: string): Promi
   const { data, error } = await client.rpc("delete_ai_memory", { p_id: memoryId })
   return unwrap(data, error)
 }
+
+/** Apply a validated goal-decomposition payload (phases + quests). */
+export interface ApplyGoalDecompositionResult extends RpcResult {
+  phasesCreated?: number
+  milestonesCreated?: number
+  questsCreated?: number
+}
+
+export async function applyGoalDecomposition(
+  client: RpcClient,
+  args: { goalId: string; phases: unknown[]; quests: unknown[] },
+): Promise<ApplyGoalDecompositionResult> {
+  const { data, error } = await client.rpc("apply_decomposition_goal", {
+    p_goal_id: args.goalId,
+    p_phases: args.phases,
+    p_quests: args.quests,
+  })
+  if (error) return { ok: false, error: error.message }
+  const r = data as {
+    ok?: boolean
+    id?: string
+    error?: string
+    phases_created?: number
+    milestones_created?: number
+    quests_created?: number
+  } | null
+  if (!r || r.ok !== true) return { ok: false, error: r?.error ?? "rpc_failed" }
+  return {
+    ok: true,
+    id: r.id,
+    phasesCreated: r.phases_created,
+    milestonesCreated: r.milestones_created,
+    questsCreated: r.quests_created,
+  }
+}
