@@ -2,6 +2,13 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { computeMomentumScore, momentumTiers, type MomentumDayRow } from "@/lib/momentum/model"
 import { gatherBehaviorFacts, type BehaviorFacts } from "@/lib/coach/behavior"
 import { COACH_STYLES, type CoachStyle } from "@/lib/coach/style"
+import {
+  formatGoalIntelligence,
+  type CoachGoalRow,
+  type CoachPhaseRow,
+  type CoachMilestoneRow,
+  type CoachQuestRow,
+} from "@/lib/coach/goal-intel"
 
 export type CoachContext = {
   text: string
@@ -24,14 +31,15 @@ function todayIso(d = new Date()): string {
 /**
  * Pulls the user's REAL Ascend data into a compact brief for the model.
  * Every section is optional — missing data simply omits the line.
+ * All DB reads here are owner-scoped (`user_id = auth.uid()`); no RLS changes.
  */
 export async function gatherCoachContext(supabase: SupabaseClient, userId: string): Promise<CoachContext> {
   const today = new Date()
   const since21 = todayIso(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 20))
 
   const [phasesRes, goalsRes, questsOpenRes, questDoneRes, userSkillsRes, statsRes, momRes, reflRes, journalRes, levelRes, profileRes] = await Promise.all([
-    supabase.from("phases").select("id,title,objective,status,goal_id").eq("user_id", userId).order("order_index"),
-    supabase.from("goals").select("id,title,status,priority,target_date").eq("user_id", userId).neq("status", "archived").limit(8),
+    supabase.from("phases").select("id,title,objective,status,goal_id,target_date,completed_at").eq("user_id", userId).order("order_index"),
+    supabase.from("goals").select("id,title,status,priority,category,target_date,created_at,completed_at").eq("user_id", userId).neq("status", "archived").limit(8),
     supabase.from("quests").select("title,difficulty,due_date,category").eq("user_id", userId).eq("status", "active").order("due_date", { ascending: true }).limit(10),
     supabase.from("quests").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "completed"),
     supabase.from("user_skills").select("skill_id,xp").eq("user_id", userId).gt("xp", 0).order("xp", { ascending: false }).limit(5),
@@ -85,7 +93,6 @@ export async function gatherCoachContext(supabase: SupabaseClient, userId: strin
         for (let i = 0; i < 7; i++) {
           const k = todayIso(d)
           if (set.has(k)) s++
-          else if (i === 0 && !set.has(k)) break
           else break
           d.setDate(d.getDate() - 1)
         }
@@ -95,22 +102,34 @@ export async function gatherCoachContext(supabase: SupabaseClient, userId: strin
     }
   }
 
-  const phases = (phasesRes.data as { id: string; title: string; objective: string | null; status: string; goal_id: string | null }[] | null) ?? []
-  const activePhase = phases.find((p) => p.status === "active")
+  // Goals (bounded, non-archived) + context from the P2.1 intel rows.
+  const goals = (goalsRes.data as CoachGoalRow[] | null) ?? []
 
-  // Milestones of active phase
+  // All phases for this user (owner-scoped). The P2.1 intel groups them by goal.
+  const allPhases = (phasesRes.data as (CoachPhaseRow & { title: string; objective: string | null })[] | null) ?? []
+  const activePhase = allPhases.find((p) => p.status === "active") ?? null
+
+  // Batched (non-N+1) load of milestones + quests for THIS user's goals' phases.
+  const goalIds = new Set(goals.map((g) => g.id))
+  const goalPhases = allPhases.filter((p) => p.goal_id && goalIds.has(p.goal_id))
+  const goalPhaseIds = goalPhases.map((p) => p.id)
+  let allMilestones: CoachMilestoneRow[] = []
+  let goalQuests: CoachQuestRow[] = []
   let milestoneLines = ""
-  if (activePhase) {
-    const { data: ms } = await supabase.from("milestones").select("title,status,is_final_challenge").eq("phase_id", activePhase.id).order("sort_order")
-    const rows = (ms as { title: string; status: string; is_final_challenge: boolean }[] | null) ?? []
-    if (rows.length > 0) {
-      milestoneLines =
-        "MILESTONES: " +
-        rows.slice(0, 8).map((m) => `${m.status === "completed" ? "[x]" : "[ ]"} ${clip(m.title, 60)}${m.is_final_challenge ? " (final)" : ""}`).join(" · ")
+  if (goalPhaseIds.length > 0) {
+    const [msRes, qRes] = await Promise.all([
+      supabase.from("milestones").select("id,phase_id,title,status,completed_at,is_final_challenge").eq("user_id", userId).in("phase_id", goalPhaseIds).order("sort_order"),
+      supabase.from("quests").select("id,phase_id,milestone_id,status,recurrence,due_date,completed_at").eq("user_id", userId).in("phase_id", goalPhaseIds).limit(300),
+    ])
+    allMilestones = (msRes.data as CoachMilestoneRow[] | null) ?? []
+    goalQuests = (qRes.data as CoachQuestRow[] | null) ?? []
+
+    const msRows = (msRes.data as { id: string; phase_id: string; title: string; status: string; is_final_challenge: boolean }[] | null) ?? []
+    const activeMs = msRows.filter((m) => m.phase_id === activePhase?.id)
+    if (activePhase && activeMs.length > 0) {
+      milestoneLines = "MILESTONES: " + activeMs.slice(0, 8).map((m) => `${m.status === "completed" ? "[x]" : "[ ]"} ${clip(m.title, 60)}${m.is_final_challenge ? " (final)" : ""}`).join(" · ")
     }
   }
-
-  const goals = (goalsRes.data as { id: string; title: string; status: string; priority: string; target_date: string | null }[] | null) ?? []
 
   // User model (stated context — enables personalization without guessing)
   const profileRow = profileRes.data as { experience_level: string | null; long_term_objectives: string | null; preferences: { coachStyle?: string } | null } | null
@@ -140,6 +159,10 @@ export async function gatherCoachContext(supabase: SupabaseClient, userId: strin
   if (goals.length > 0) {
     lines.push(`GOALS: ${goals.map((g) => `${clip(g.title, 50)} [${g.status}/${g.priority}${g.target_date ? `, target ${g.target_date}` : ""}]`).join("; ")}`)
   }
+
+  // P2.1 — compact deterministic Goal Intelligence signals (bounded to the same top goals).
+  const goalIntelText = formatGoalIntelligence(goals, allPhases, allMilestones, goalQuests, todayIso())
+  if (goalIntelText) lines.push(goalIntelText)
 
   if (profileRow) {
     const userBits: string[] = []

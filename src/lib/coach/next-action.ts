@@ -98,7 +98,20 @@ export function recommendNextAction(input: NextActionInput): NextAction | null {
     return { q, base, kind, d, final: base - (kind === "adapt" ? NEXT_ACTION_THRESHOLDS.adaptPenalty : 0) }
   })
 
-  scored.sort((a, b) => b.final - a.final || (a.d ?? 0) - (b.d ?? 0) || a.q.title.localeCompare(b.q.title))
+  // Goal-aware deterministic tie-break (P2.1 Stage 5): when two candidates are
+  // otherwise equally scored, prefer the one aligned with the ACTIVE goal's
+  // current phase / next milestone. This does not change any P1 score — it only
+  // orders otherwise-identical finals deterministically toward the goal journey.
+  scored.sort((a, b) => {
+    if (b.final !== a.final) return b.final - a.final
+    const aOnMilestone = input.nextMilestone ? (a.q.milestone_id === input.nextMilestone.id ? 1 : 0) : 0
+    const bOnMilestone = input.nextMilestone ? (b.q.milestone_id === input.nextMilestone.id ? 1 : 0) : 0
+    if (bOnMilestone !== aOnMilestone) return bOnMilestone - aOnMilestone
+    const aOnPhase = input.currentPhase ? (a.q.phase_id === input.currentPhase.id ? 1 : 0) : 0
+    const bOnPhase = input.currentPhase ? (b.q.phase_id === input.currentPhase.id ? 1 : 0) : 0
+    if (bOnPhase !== aOnPhase) return bOnPhase - aOnPhase
+    return (a.d ?? 0) - (b.d ?? 0) || a.q.title.localeCompare(b.q.title)
+  })
   const top = scored[0]
 
   const dueLabel = (() => {

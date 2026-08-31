@@ -127,4 +127,41 @@ describe("next best action", () => {
     expect(action).not.toBeNull()
     expect(action?.quest.id).toBe("g1")
   })
+
+  it("uses the active phase + next milestone to break an exact score tie (goal-aware)", () => {
+    // Both reach final 100. active-path earns it via active phase + next
+    // milestone alignment (P1 points); rival earns 100 via due-today + critical
+    // priority. Tied → the goal-aware tie-break prefers the goal's active path.
+    const action = recommendNextAction(
+      input({
+        quests: [
+          q("active-path", { due_date: "2026-08-16", phase_id: "p1", milestone_id: "m1" }),
+          q("rival", { due_date: "2026-08-15", phase_id: "p2" }),
+        ],
+        currentPhase: { id: "p1", title: "Phase One" },
+        nextMilestone: { id: "m1", title: "Milestone One" },
+        phasePriority: { p2: "critical", p1: "low" },
+        today: "2026-08-15",
+      }),
+    )
+    // active-path: near(40) + phase(25) + milestone(35) = 100
+    // rival:       due today(70) + critical(30) = 100
+    expect(action?.quest.id).toBe("active-path")
+  })
+
+  it("does not let active-phase alignment override an overdue quest (P1 precedence preserved)", () => {
+    const action = recommendNextAction(
+      input({
+        quests: [
+          q("phase-quest", { due_date: "2026-08-18", phase_id: "p1" }),
+          q("overdue-quest", { due_date: "2026-08-10" }),
+        ],
+        currentPhase: { id: "p1", title: "Phase One" },
+        today: "2026-08-15",
+      }),
+    )
+    // overdue-quest: overdue(90) ; phase-quest: near(25) + phase(25) = 50
+    expect(action?.quest.id).toBe("overdue-quest")
+    expect(action?.kind).toBe("complete")
+  })
 })
