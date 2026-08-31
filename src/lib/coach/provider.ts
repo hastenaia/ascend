@@ -34,6 +34,7 @@ function legacyBaseUrl(): string {
   return (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "")
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function callGemini(messages: ChatMessage[], _opts: ModelCallOptions = {}): Promise<ModelResult> {
   const key = geminiKey()
   if (!key) return { ok: false, unavailable: true, reason: "no_key" }

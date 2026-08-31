@@ -4,13 +4,13 @@ import { assertCostGate, getCache, makeCacheKey, shouldUseAI, setCache } from ".
 import { proposeModel } from "./provider"
 import { rateLimited } from "./ratelimit"
 import { sanitizeForPrompt } from "./context"
-import type { AIProposalRequest, AIProposalResult } from "./types"
+import type { AIProposalFailureReason, AIProposalRequest, AIProposalResult } from "./types"
 import type { ChatMessage, ModelCallOptions, ModelResult } from "@/lib/coach/provider"
 
 export type ModelCall = (messages: ChatMessage[], opts?: ModelCallOptions) => Promise<ModelResult>
 
-/** Internal request shape with the injectable seam for tests. */
-interface RunnableAIProposalRequest<T> extends AIProposalRequest<T> {
+/** Request shape with the injectable model seam (used by tests). */
+export interface RunnableAIProposalRequest<T> extends AIProposalRequest<T> {
   modelCall?: ModelCall
 }
 
@@ -94,9 +94,7 @@ export async function runAIProposal<T>(req: RunnableAIProposalRequest<T>): Promi
   return { ok: true, proposal: validated, source: "ai" }
 }
 
-type ModelCall = (messages: ChatMessage[], opts?: ModelCallOptions) => Promise<ModelResult>
-
-function mapUnavailable(result: ModelResult): AIProposalResult<never>["reason"] {
+function mapUnavailable(result: ModelResult): AIProposalFailureReason {
   if (result.ok) return "unavailable"
   if (result.reason === "no_key") return "no_key"
   if (result.reason === "upstream_error") return "upstream_error"

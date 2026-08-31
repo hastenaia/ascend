@@ -1,5 +1,4 @@
 import { z } from "zod"
-import type { ZodType } from "zod"
 
 /**
  * Reusable Zod building blocks for AI proposals. Domains compose these into
@@ -23,10 +22,11 @@ export function cleanString(max: number) {
     .transform((v) => (typeof v === "string" ? v.trim().slice(0, max) : ""))
 }
 
-/** An int bounded by [min, max], present or null. */
+/** An int bounded by [min, max]; anything else (incl. out-of-range) → null. */
 export function boundedInt(min: number, max: number) {
   return z
     .union([z.number().int().min(min).max(max), z.null(), z.undefined()])
+    .catch(null)
     .transform((v) => (typeof v === "number" ? v : null))
 }
 

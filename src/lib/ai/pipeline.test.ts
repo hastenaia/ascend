@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest"
 import { z } from "zod"
-import { runAIProposal, type ModelCall } from "./pipeline"
+import { runAIProposal, type ModelCall, type RunnableAIProposalRequest } from "./pipeline"
 import { resetAiState } from "./cost"
-import type { AIProposalRequest, GatherFactsResult } from "./types"
-import type { ChatMessage, ModelResult } from "@/lib/coach/provider"
+import type { GatherFactsResult } from "./types"
+import type { ModelResult } from "@/lib/coach/provider"
 
 const S = z.object({ title: z.string().trim().min(1).max(100) })
 type Shape = z.infer<typeof S>
@@ -12,7 +12,7 @@ function okModel(content: string): ModelCall {
   return async (): Promise<ModelResult> => ({ ok: true, content })
 }
 
-function baseReq(over: Partial<AIProposalRequest<Shape>> = {}): AIProposalRequest<Shape> {
+function baseReq(over: Partial<RunnableAIProposalRequest<Shape>> = {}): RunnableAIProposalRequest<Shape> {
   const collect = async (): Promise<GatherFactsResult> => ({ text: "facts", signals: { a: 1 }, resolved: false })
   return {
     userId: "u",
