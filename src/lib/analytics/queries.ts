@@ -173,7 +173,12 @@ export async function getAnalyticsBundle(supabase: SupabaseClient, userId: strin
 
   // --- Phases + milestones (global journey) ---
   const phaseList = (phasesRes.data as { id: string; title: string; status: string }[] | null) ?? []
-  const allMs = (msRes.data as { id: string; phase_id: string; status: string }[] | null) ?? []
+  const goalPhaseRows = (goalPhasesRes.data as { id: string; goal_id: string; status: string }[] | null) ?? []
+  // Scope milestone rows to phases this user actually owns (defense-in-depth:
+  // never count another account's milestones even if a raw row leaks).
+  const ownedPhaseIds = new Set([...phaseList.map((p) => p.id), ...goalPhaseRows.map((p) => p.id)])
+  const allMsRaw = (msRes.data as { id: string; phase_id: string; status: string }[] | null) ?? []
+  const allMs = allMsRaw.filter((m) => ownedPhaseIds.has(m.phase_id))
   const phases: PhaseBar[] = phaseList.map((p) => {
     const ms = allMs.filter((m) => m.phase_id === p.id)
     const done = ms.filter((m) => m.status === "completed").length
@@ -190,7 +195,6 @@ export async function getAnalyticsBundle(supabase: SupabaseClient, userId: strin
 
   // --- Goals ---
   const goalRows = (goalsRes.data as { id: string; title: string }[] | null) ?? []
-  const goalPhaseRows = (goalPhasesRes.data as { id: string; goal_id: string; status: string }[] | null) ?? []
   const goals: GoalBar[] = goalRows.map((g) => {
     const gp = goalPhaseRows.filter((p) => p.goal_id === g.id)
     return {

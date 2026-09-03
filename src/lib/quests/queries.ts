@@ -73,17 +73,17 @@ async function getCompletionsSince(supabase: SupabaseClient, userId: string, sin
   return (data ?? []) as { quest_id: string; completed_at: string }[]
 }
 
-async function getXpSummaries(supabase: SupabaseClient) {
+async function getXpSummaries(supabase: SupabaseClient, userId: string) {
   // Lifetime total comes from the maintained user_levels snapshot (O(1) row read)
   // instead of summing the entire ledger on every request. Falls back to a sum
   // only when the snapshot is missing.
   const [snap, recent] = await Promise.all([
-    supabase.from("user_levels").select("xp").limit(1).maybeSingle(),
-    supabase.from("xp_transactions").select("amount, created_at").gte("created_at", startOfTodayIso()),
+    supabase.from("user_levels").select("xp").eq("user_id", userId).maybeSingle(),
+    supabase.from("xp_transactions").select("amount, created_at").eq("user_id", userId).gte("created_at", startOfTodayIso()),
   ])
   let total = (snap.data as { xp: number } | null)?.xp
   if (typeof total !== "number") {
-    const { data: all } = await supabase.from("xp_transactions").select("amount")
+    const { data: all } = await supabase.from("xp_transactions").select("amount").eq("user_id", userId)
     total = ((all as { amount: number }[]) ?? []).reduce((s, r) => s + r.amount, 0)
   }
   const today = ((recent.data as { amount: number }[] | null) ?? []).reduce((s, r) => s + r.amount, 0)
@@ -95,8 +95,8 @@ async function getMomentumRow(supabase: SupabaseClient, userId: string, today: s
   return (data as { score: number; streak: number } | null) ?? { score: 0, streak: 0 }
 }
 
-export async function getLevelSummary(supabase: SupabaseClient): Promise<LevelProgress & { xpToday: number }> {
-  const { total, today } = await getXpSummaries(supabase)
+export async function getLevelSummary(supabase: SupabaseClient, userId: string): Promise<LevelProgress & { xpToday: number }> {
+  const { total, today } = await getXpSummaries(supabase, userId)
   return { ...levelProgress(total), xpToday: today }
 }
 
@@ -145,7 +145,7 @@ export async function getQuestsPageData(supabase: SupabaseClient, userId: string
   const [active, recentCompleted, level, todays] = await Promise.all([
     getActiveQuests(supabase, userId),
     getRecentCompletedQuests(supabase, userId),
-    getLevelSummary(supabase),
+    getLevelSummary(supabase, userId),
     getTodaysQuests(supabase, userId),
   ])
 
@@ -161,10 +161,10 @@ export async function getDashboardData(supabase: SupabaseClient, userId: string)
   const today = todayDateString()
   const [todays, level, momentum, recentMilestones, trend] = await Promise.all([
     getTodaysQuests(supabase, userId),
-    getLevelSummary(supabase),
+    getLevelSummary(supabase, userId),
     getMomentumRow(supabase, userId, today),
     getRecentCompletedMilestones(supabase, userId, 3),
-    getMomentumTrend(supabase),
+    getMomentumTrend(supabase, userId),
   ])
 
   let current: PhaseWithProgress | null = null
@@ -185,11 +185,11 @@ export async function getDashboardData(supabase: SupabaseClient, userId: string)
 }
 
 /** Momentum score: current week-to-date vs previous full week */
-export async function getMomentumTrend(supabase: SupabaseClient): Promise<{ thisWeek: number; prevWeek: number }> {
+export async function getMomentumTrend(supabase: SupabaseClient, userId: string): Promise<{ thisWeek: number; prevWeek: number }> {
   const since = new Date()
   since.setDate(since.getDate() - 13)
   const sinceStr = `${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, "0")}-${String(since.getDate()).padStart(2, "0")}`
-  const { data } = await supabase.from("momentum").select("date, score").gte("date", sinceStr)
+  const { data } = await supabase.from("momentum").select("date, score").eq("user_id", userId).gte("date", sinceStr)
   const rows = ((data as { date: string; score: number }[]) ?? []).sort((a, b) => a.date.localeCompare(b.date))
   const now = new Date()
   let thisWeek = 0

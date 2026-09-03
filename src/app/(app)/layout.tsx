@@ -26,7 +26,7 @@ export default async function AppGroupLayout({ children }: { children: React.Rea
   // Level identity for the chrome (RLS-scoped; safe to fail soft)
   let levelChip: { level: number; progressPct: number; xpToNext: number } | null = null
   try {
-    const lvl = await getLevelSummary(supabase)
+    const lvl = await getLevelSummary(supabase, user.id)
     levelChip = { level: lvl.level, progressPct: lvl.progressPct, xpToNext: lvl.xpToNext }
   } catch {}
 

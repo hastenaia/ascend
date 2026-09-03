@@ -63,7 +63,7 @@ async function fetchSignals(supabase: SupabaseClient, userId: string): Promise<A
   const [completionsRes, questsRes, streakRes, phasesRes] = await Promise.all([
     supabase.from("quest_completions").select("quest_id").eq("user_id", userId),
     supabase.from("quests").select("id,category,estimated_duration").eq("user_id", userId),
-    supabase.from("momentum").select("streak").order("streak", { ascending: false }).limit(1),
+    supabase.from("momentum").select("streak").eq("user_id", userId).order("streak", { ascending: false }).limit(1),
     supabase.from("phases").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "completed"),
   ])
 
