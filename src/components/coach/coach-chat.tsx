@@ -63,10 +63,15 @@ export function CoachChat({ initialHistory }: { initialHistory: CoachMsg[] }) {
     }
     try {
       let json = await tryEdge()
-      // If Edge Function not deployed or returns no reply field, fallback to Next.js
-      if (!json || (json.ok === undefined && json.reply === undefined && json.response === undefined && json.error === undefined)) {
+      // Treat the Edge Function as usable ONLY if it returned a real success
+      // (ok === true AND a reply). Anything else — not deployed (null), malformed,
+      // or explicitly { ok:false, unavailable:true } (e.g. the function is missing
+      // its own GEMINI_API_KEY secret) — falls back to the Next.js route, which
+      // reads the key from the server env and is the reliable path.
+      const edgeUsable = !!(json && json.ok === true && (json.reply || json.response))
+      if (!edgeUsable) {
         json = await tryNext()
-      } else if (json.response && !json.reply) {
+      } else if (json && json.response && !json.reply) {
         // Edge Function may return {response: "..."} — normalize to {reply}
         json = { ok: json.ok ?? true, reply: json.response, error: json.error } as typeof json
       }
