@@ -22,6 +22,17 @@ export function GenerateQuestFlow({ activePhaseId }: { activePhaseId: string | n
   const [adding, setAdding] = React.useState(false)
   const [proposals, setProposals] = React.useState<ProposedQuest[] | null>(null)
   const [selected, setSelected] = React.useState<Set<number>>(new Set())
+  const [rateLimitedUntil, setRateLimitedUntil] = React.useState<number | null>(null)
+  const [now, setNow] = React.useState(() => Date.now())
+
+  React.useEffect(() => {
+    if (!rateLimitedUntil) return
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [rateLimitedUntil])
+
+  const cooldownLeft = rateLimitedUntil ? Math.max(0, Math.ceil((rateLimitedUntil - now) / 1000)) : 0
+  const loadingOrCooldown = loading || cooldownLeft > 0
 
   async function generate() {
     setLoading(true)
@@ -32,11 +43,17 @@ export function GenerateQuestFlow({ activePhaseId }: { activePhaseId: string | n
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ focus }),
       })
-      const json = (await res.json()) as { ok?: boolean; quests?: ProposedQuest[] }
+      const json = (await res.json()) as { ok?: boolean; quests?: ProposedQuest[]; rate_limited?: boolean; retryAfter?: number | null }
       if (json.ok && json.quests?.length) {
         setProposals(json.quests)
         setSelected(new Set(json.quests.map((_, i) => i)))
-      } else toast.error(COACH_UNAVAILABLE_MESSAGE)
+      } else if (json.rate_limited) {
+        const secs = json.retryAfter && json.retryAfter > 0 ? json.retryAfter : 30
+        setRateLimitedUntil(Date.now() + secs * 1000)
+        toast.error(`AI Coach is rate-limited. Please wait about ${secs} seconds and try again.`)
+      } else {
+        toast.error(COACH_UNAVAILABLE_MESSAGE)
+      }
     } catch {
       toast.error(COACH_UNAVAILABLE_MESSAGE)
     } finally {
@@ -92,9 +109,9 @@ export function GenerateQuestFlow({ activePhaseId }: { activePhaseId: string | n
         {!proposals ? (
           <div className="space-y-3">
             <Input placeholder='Optional focus — e.g. "deep work for milestone X"' value={focus} onChange={(e) => setFocus(e.target.value)} />
-            <Button onClick={generate} disabled={loading} className="w-full">
+            <Button onClick={generate} disabled={loadingOrCooldown} className="w-full">
               {loading ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Wand2 className="mr-1 size-4" />}
-              {loading ? "Generating…" : "Generate quests"}
+              {loading ? "Generating…" : cooldownLeft > 0 ? `Rate-limited — retry in ${cooldownLeft}s` : "Generate quests"}
             </Button>
           </div>
         ) : (

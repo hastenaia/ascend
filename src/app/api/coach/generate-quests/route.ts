@@ -19,7 +19,9 @@ const DIFFICULTIES = ["easy", "medium", "hard", "challenge"]
 
 /**
  * POST /api/coach/generate-quests   Body: { focus?: string }
- * → { ok:true, quests: ProposedQuest[] } | { ok:false, unavailable:true }
+ * → { ok:true, quests: ProposedQuest[] }
+ *   | { ok:false, rate_limited:true, retryAfter?: number } (HTTP 429)
+ *   | { ok:false, unavailable:true } (HTTP 200)
  */
 export async function POST(req: Request) {
   const supabase = await createClient()
@@ -57,7 +59,15 @@ Respond with ONLY a JSON array: [{"title":"...","category":"...","difficulty":".
   ]
 
   const result = await callModel(messages, { maxTokens: 600, temperature: 0.7 })
-  if (!result.ok) return NextResponse.json({ ok: false, unavailable: true }, { status: 200 })
+  if (!result.ok) {
+    if (result.reason === "rate_limited") {
+      return NextResponse.json(
+        { ok: false, rate_limited: true, retryAfter: result.retryAfterSeconds ?? null },
+        { status: 429 },
+      )
+    }
+    return NextResponse.json({ ok: false, unavailable: true }, { status: 200 })
+  }
 
   const parsed = extractJson<ProposedQuest[]>(result.content)
   const quests = Array.isArray(parsed)

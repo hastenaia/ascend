@@ -18,7 +18,14 @@ export type ModelCallOptions = { maxTokens?: number; temperature?: number }
 
 export type ModelResult =
   | { ok: true; content: string }
-  | { ok: false; unavailable: true; reason: "no_key" | "upstream_error"; detail?: string }
+  | {
+      ok: false
+      unavailable: true
+      reason: "no_key" | "upstream_error" | "rate_limited"
+      detail?: string
+      /** Seconds to wait before retrying, when the upstream rate-limited us (reason === "rate_limited"). */
+      retryAfterSeconds?: number
+    }
 
 export function coachConfigured(): boolean {
   return !!(process.env.GEMINI_API_KEY || process.env.AI_API_KEY || process.env.OPENAI_API_KEY)
@@ -34,8 +41,7 @@ function legacyBaseUrl(): string {
   return (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "")
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function callGemini(messages: ChatMessage[], _opts: ModelCallOptions = {}): Promise<ModelResult> {
+export async function callGemini(messages: ChatMessage[], opts: ModelCallOptions = {}): Promise<ModelResult> {
   const key = geminiKey()
   if (!key) return { ok: false, unavailable: true, reason: "no_key" }
   const systemMsg = messages.find((m) => m.role === "system")
@@ -57,12 +63,25 @@ export async function callGemini(messages: ChatMessage[], _opts: ModelCallOption
         model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
         input,
         system_instruction: systemInstruction,
+        generation_config: {
+          max_output_tokens: opts.maxTokens ?? 700,
+          temperature: opts.temperature ?? 0.6,
+        },
       }),
       signal: controller.signal,
     })
     if (!res.ok) {
       const body = (await res.text()).slice(0, 600)
       console.error("[coach] gemini upstream", res.status, body)
+      if (res.status === 429) {
+        return {
+          ok: false,
+          unavailable: true,
+          reason: "rate_limited",
+          detail: `HTTP 429: ${body.slice(0, 200)}`,
+          retryAfterSeconds: parseRetryAfter(body),
+        }
+      }
       return { ok: false, unavailable: true, reason: "upstream_error", detail: `HTTP ${res.status}: ${body.slice(0, 200)}` }
     }
     const json = (await res.json()) as {
@@ -153,6 +172,18 @@ async function callLegacy(messages: ChatMessage[], opts: { maxTokens?: number; t
 export async function callModel(messages: ChatMessage[], opts: ModelCallOptions = {}): Promise<ModelResult> {
   if (geminiKey()) return callGemini(messages, opts)
   return callLegacy(messages, opts)
+}
+
+/**
+ * Parse a retry delay (seconds) out of a Gemini 429 error body. The upstream
+ * message typically contains "Please retry in 25.804533271s." This is a best
+ * effort — falls back to `undefined` when it can't be determined.
+ */
+function parseRetryAfter(body: string): number | undefined {
+  const match = /retry in\s+([0-9.]+)\s*s/i.exec(body)
+  if (!match) return undefined
+  const seconds = Number(match[1])
+  return Number.isFinite(seconds) && seconds >= 1 ? Math.ceil(seconds) : undefined
 }
 
 /** Extract a JSON object/array from a model response that may wrap it in prose or code fences */
