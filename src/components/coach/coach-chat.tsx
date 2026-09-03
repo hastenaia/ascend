@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils"
 import { COACH_UNAVAILABLE_MESSAGE, SUGGESTED_PROMPTS, type CoachMsg } from "@/components/coach/types"
 import { Trash2 } from "lucide-react"
 import { toast } from "sonner"
-import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 
 export function CoachChat({ initialHistory }: { initialHistory: CoachMsg[] }) {
   const reduced = useReducedMotion()
@@ -16,10 +15,19 @@ export function CoachChat({ initialHistory }: { initialHistory: CoachMsg[] }) {
   const [input, setInput] = React.useState("")
   const [loading, setLoading] = React.useState(false)
   const scrollRef = React.useRef<HTMLDivElement>(null)
+  const abortRef = React.useRef<AbortController | null>(null)
+  const mountedRef = React.useRef(true)
 
   React.useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: reduced ? "auto" : "smooth" })
   }, [messages, loading, reduced])
+
+  React.useEffect(() => {
+    return () => {
+      mountedRef.current = false
+      abortRef.current?.abort()
+    }
+  }, [])
 
   async function clearHistory() {
     try {
@@ -38,43 +46,29 @@ export function CoachChat({ initialHistory }: { initialHistory: CoachMsg[] }) {
     setInput("")
     setMessages((m) => [...m, { role: "user", content: message }, { role: "assistant", content: "…" }])
     setLoading(true)
-    // Preserve contract: try Supabase Edge Function ai-coach first, fallback to Next.js route
-    const tryEdge = async (): Promise<{ ok?: boolean; reply?: string; response?: string; error?: string } | null> => {
-      try {
-        const supabase = createSupabaseClient()
-        const { data, error } = await supabase.functions.invoke("ai-coach", { body: { message } })
-        if (error) return null
-        return data as { ok?: boolean; reply?: string; response?: string; error?: string }
-      } catch {
-        return null
-      }
-    }
+    // Authoritative Coach path: Next.js /api/coach/chat (tool-aware, uses
+    // shared prompt/context/provider). The Supabase Edge Function
+    // `ai-coach` is legacy/deprecated — do not invoke it from the UI.
+    // Abort previous request if still in flight (duplicate protection)
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     const tryNext = async (): Promise<{ ok?: boolean; reply?: string; error?: string } | null> => {
       try {
         const res = await fetch("/api/coach/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message }),
+          signal: controller.signal,
         })
         return (await res.json()) as { ok?: boolean; reply?: string; error?: string }
-      } catch {
+      } catch (e: unknown) {
+        if (e instanceof DOMException && e.name === "AbortError") return null
         return null
       }
     }
     try {
-      let json = await tryEdge()
-      // Treat the Edge Function as usable ONLY if it returned a real success
-      // (ok === true AND a reply). Anything else — not deployed (null), malformed,
-      // or explicitly { ok:false, unavailable:true } (e.g. the function is missing
-      // its own GEMINI_API_KEY secret) — falls back to the Next.js route, which
-      // reads the key from the server env and is the reliable path.
-      const edgeUsable = !!(json && json.ok === true && (json.reply || json.response))
-      if (!edgeUsable) {
-        json = await tryNext()
-      } else if (json && json.response && !json.reply) {
-        // Edge Function may return {response: "..."} — normalize to {reply}
-        json = { ok: json.ok ?? true, reply: json.response, error: json.error } as typeof json
-      }
+      const json = await tryNext()
       // If still null, show unavailable
       if (!json) {
         setMessages((m) => {
@@ -101,6 +95,7 @@ export function CoachChat({ initialHistory }: { initialHistory: CoachMsg[] }) {
         return next
       })
     } catch {
+      if (!mountedRef.current) return
       setMessages((m) => {
         const next = [...m]
         const placeholder = next[next.length - 1]
@@ -108,7 +103,8 @@ export function CoachChat({ initialHistory }: { initialHistory: CoachMsg[] }) {
         return next
       })
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
+      if (abortRef.current === controller) abortRef.current = null
     }
   }
 

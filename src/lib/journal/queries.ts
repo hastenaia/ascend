@@ -77,7 +77,7 @@ export async function getJournalWithMeta(supabase: SupabaseClient, userId: strin
   const phaseIds = [...new Set(entries.map((e) => e.phase_id).filter(Boolean) as string[])]
   const questIds = [...new Set(entries.map((e) => e.quest_id).filter(Boolean) as string[])]
   const [phases, quests] = await Promise.all([
-    phaseIds.length ? supabase.from("phases").select("id,title").in("id", phaseIds) : Promise.resolve({ data: [] } as never),
+    phaseIds.length ? supabase.from("phases").select("id,title").eq("user_id", userId).in("id", phaseIds) : Promise.resolve({ data: [] } as never),
     questIds.length ? supabase.from("quests").select("id,title").eq("user_id", userId).in("id", questIds) : Promise.resolve({ data: [] } as never),
   ])
   const phaseMap = new Map(((phases.data as { id: string; title: string }[] | null) ?? []).map((p) => [p.id, p.title]))

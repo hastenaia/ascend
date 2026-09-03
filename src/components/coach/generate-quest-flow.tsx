@@ -24,6 +24,7 @@ export function GenerateQuestFlow({ activePhaseId }: { activePhaseId: string | n
   const [selected, setSelected] = React.useState<Set<number>>(new Set())
   const [rateLimitedUntil, setRateLimitedUntil] = React.useState<number | null>(null)
   const [now, setNow] = React.useState(() => Date.now())
+  const abortRef = React.useRef<AbortController | null>(null)
 
   React.useEffect(() => {
     if (!rateLimitedUntil) return
@@ -31,10 +32,18 @@ export function GenerateQuestFlow({ activePhaseId }: { activePhaseId: string | n
     return () => window.clearInterval(id)
   }, [rateLimitedUntil])
 
+  React.useEffect(() => {
+    return () => abortRef.current?.abort()
+  }, [])
+
   const cooldownLeft = rateLimitedUntil ? Math.max(0, Math.ceil((rateLimitedUntil - now) / 1000)) : 0
   const loadingOrCooldown = loading || cooldownLeft > 0
 
   async function generate() {
+    if (loading) return
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     setLoading(true)
     setProposals(null)
     try {
@@ -42,6 +51,7 @@ export function GenerateQuestFlow({ activePhaseId }: { activePhaseId: string | n
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ focus }),
+        signal: controller.signal,
       })
       const json = (await res.json()) as { ok?: boolean; quests?: ProposedQuest[]; rate_limited?: boolean; retryAfter?: number | null }
       if (json.ok && json.quests?.length) {
@@ -54,10 +64,14 @@ export function GenerateQuestFlow({ activePhaseId }: { activePhaseId: string | n
       } else {
         toast.error(COACH_UNAVAILABLE_MESSAGE)
       }
-    } catch {
+    } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === "AbortError") return
       toast.error(COACH_UNAVAILABLE_MESSAGE)
     } finally {
-      setLoading(false)
+      if (abortRef.current === controller) {
+        abortRef.current = null
+        setLoading(false)
+      }
     }
   }
 

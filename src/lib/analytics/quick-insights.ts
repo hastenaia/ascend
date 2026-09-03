@@ -26,7 +26,7 @@ export async function getQuickInsights(supabase: SupabaseClient, userId: string)
   const [completionsRes, xpRes, snapRes, phaseRes, momRes, goalRes, gPhaseRes, achRes] = await Promise.all([
     supabase.from("quest_completions").select("created_at").eq("user_id", userId).gte("created_at", daysAgoIso(13)),
     supabase.from("xp_transactions").select("amount,created_at").eq("user_id", userId).gte("created_at", daysAgoIso(13)),
-    supabase.from("user_levels").select("xp").limit(1).maybeSingle(),
+    supabase.from("user_levels").select("xp").eq("user_id", userId).maybeSingle(),
     supabase.from("phases").select("id,title,status").eq("user_id", userId).is("goal_id", null).eq("status", "active").limit(1),
     supabase.from("momentum").select("date,score,recovery,recovery_kinds").eq("user_id", userId).gte("date", daysAgoIso(20)),
     supabase.from("goals").select("id,title").eq("user_id", userId).neq("status", "archived"),

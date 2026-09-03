@@ -64,7 +64,7 @@ export async function getAnalyticsBundle(supabase: SupabaseClient, userId: strin
       supabase.from("milestones").select("id,phase_id,status"),
       supabase.from("user_stats").select("stat_id,value").eq("user_id", userId),
       supabase.from("stats").select("id,name"),
-      supabase.from("skills").select("name,xp_current").eq("user_id", userId).gt("xp_current", 0).order("xp_current", { ascending: false }).limit(8),
+      supabase.from("user_skills").select("skill_id,xp").eq("user_id", userId).gt("xp", 0).order("xp", { ascending: false }).limit(8),
       supabase.from("momentum").select("date,score,recovery,recovery_kinds").eq("user_id", userId).gte("date", daysAgoIso(20)),
       supabase.from("goals").select("id,title,status").eq("user_id", userId).neq("status", "archived"),
       supabase.from("user_achievements").select("unlocked_at,achievements(name)").eq("user_id", userId).order("unlocked_at", { ascending: false }),
@@ -156,9 +156,17 @@ export async function getAnalyticsBundle(supabase: SupabaseClient, userId: strin
     .map((s) => ({ stat: statNames.get(s.stat_id) ?? s.stat_id.slice(0, 4), value: Math.round(s.value) }))
     .sort((a, b) => b.value - a.value)
 
-  const skills: SkillPoint[] = ((skillsRes.data as { name: string; xp_current: number }[] | null) ?? []).map((s) => ({
-    skill: s.name.replace(/-/g, " "),
-    xp: Math.round(s.xp_current),
+  // skillsRes is user_skills (skill_id/xp); resolve names via catalog
+  const userSkillRows = (skillsRes.data as { skill_id: string; xp: number }[] | null) ?? []
+  let skillNameMap = new Map<string, string>()
+  if (userSkillRows.length > 0) {
+    const ids = userSkillRows.map((r) => r.skill_id)
+    const { data: skillCat } = await supabase.from("skills").select("id,name").in("id", ids)
+    skillNameMap = new Map(((skillCat as { id: string; name: string }[] | null) ?? []).map((s) => [s.id, s.name]))
+  }
+  const skills: SkillPoint[] = userSkillRows.map((s) => ({
+    skill: (skillNameMap.get(s.skill_id) ?? s.skill_id.slice(0, 4)).replace(/-/g, " "),
+    xp: Math.round(s.xp),
   }))
 
   // --- Momentum daily series via shared decay model ---

@@ -7,6 +7,7 @@ import { gatherCoachContext } from "@/lib/coach/context"
 import { rateLimited } from "@/lib/coach/ratelimit"
 import { adaptQuestProposalSchema, type AdaptQuestProposal } from "@/lib/quests/adapt"
 import { clampXpForDifficulty, XP_BANDS } from "@/lib/validations/quest"
+import { sanitizeForPrompt } from "@/lib/ai/context"
 
 export const runtime = "nodejs"
 
@@ -80,6 +81,11 @@ export async function POST(req: Request) {
     .map(([d, b]) => `${d}: ${b.min}–${b.max} XP`)
     .join("; ")
 
+  // Sanitize user-controlled quest fields so they remain data, not instructions
+  const safeTitle = sanitizeForPrompt(quest.title) || quest.title
+  const safeDesc = quest.description ? sanitizeForPrompt(quest.description.slice(0, 300)) || quest.description.slice(0, 300) : ""
+  const safeEvidence = quest.evidence ? sanitizeForPrompt(quest.evidence.slice(0, 200)) || quest.evidence.slice(0, 200) : ""
+
   const messages: ChatMessage[] = [
     buildSystemPrompt(ctx.text),
     {
@@ -88,8 +94,8 @@ export async function POST(req: Request) {
 
 QUEST TO RESCALE:
 - id: ${quest.id}
-- title: "${quest.title}"
-- description: ${quest.description ? `"${quest.description.slice(0, 300)}"` : "none"}
+- title: "${safeTitle}"
+- description: ${safeDesc ? `"${safeDesc}"` : "none"}
 - category: ${quest.category}
 - difficulty: ${quest.difficulty}
 - current xp_reward: ${quest.xp_reward}
@@ -98,7 +104,7 @@ QUEST TO RESCALE:
 - postponed_count: ${quest.postponed_count ?? 0}
 - skipped_count: ${quest.skipped_count ?? 0}
 - adapted_from_difficulty: ${quest.adapted_from_difficulty ?? "never adapted"}
-- evidence so far: ${quest.evidence ? `"${quest.evidence.slice(0, 200)}"` : "none"}
+- evidence so far: ${safeEvidence ? `"${safeEvidence}"` : "none"}
 
 Rules:
 - XP bands are ${bandLines}. Pick an xp_reward INSIDE the band for the chosen difficulty (the server clamps to the band anyway).

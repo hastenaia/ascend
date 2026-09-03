@@ -21,6 +21,16 @@ export async function loadHistory(
 export async function appendMessage(supabase: SupabaseClient, userId: string, role: "user" | "assistant", content: string): Promise<void> {
   const trimmed = content.trim().slice(0, MAX_CONTENT)
   if (!trimmed) return
+  if (role === "assistant") {
+    // Assistant history is trusted — route through SECURITY DEFINER RPC so the
+    // browser cannot forge arbitrary assistant rows via direct table INSERT.
+    // Fall back to direct insert only if the RPC is unavailable (e.g. migration
+    // not yet applied on local/prod) to keep existing conversations working.
+    const { error } = await supabase.rpc("append_coach_assistant_message", { p_content: trimmed })
+    if (!error) return
+    await supabase.from("coach_messages").insert({ user_id: userId, role, content: trimmed })
+    return
+  }
   await supabase.from("coach_messages").insert({ user_id: userId, role, content: trimmed })
 }
 

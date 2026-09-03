@@ -26,7 +26,7 @@ export default async function SkillsPage() {
 
   let tree
   try {
-    tree = await getSkillTreeData(supabase)
+    tree = await getSkillTreeData(supabase, user.id)
   } catch {
     tree = null
   }

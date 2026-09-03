@@ -83,9 +83,13 @@ Respond with ONLY JSON (no markdown fences) matching EXACTLY:
     const start = text.indexOf("{")
     const end = text.lastIndexOf("}")
     if (start !== -1 && end > start) {
-      const review = parseWeeklyReview(JSON.parse(text.slice(start, end + 1)))
-      if (review) {
-        return NextResponse.json({ ok: true, week: metrics.window.start, metrics, patterns_text: patternsText, review })
+      try {
+        const review = parseWeeklyReview(JSON.parse(text.slice(start, end + 1)))
+        if (review) {
+          return NextResponse.json({ ok: true, week: metrics.window.start, metrics, patterns_text: patternsText, review })
+        }
+      } catch {
+        // Malformed model output — fall through to deterministic facts with review:null
       }
     }
   }

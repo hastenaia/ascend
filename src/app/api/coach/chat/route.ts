@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { callGemini, geminiKey, type ChatMessage, type ToolCall } from "@/lib/coach/provider"
+import { z } from "zod"
+import { callGemini, callModel, geminiKey, type ChatMessage, type ToolCall } from "@/lib/coach/provider"
 import { buildSystemPrompt } from "@/lib/coach/prompt"
 import { gatherCoachContext } from "@/lib/coach/context"
 import { coachStyleInstructions } from "@/lib/coach/style"
@@ -56,11 +57,11 @@ export async function POST(req: Request) {
   // Persist the user's turn regardless of model availability (history continuity)
   await appendMessage(supabase, user.id, "user", message)
 
-  // First model call — with tools when Gemini is available.
-  const useTools = geminiKey()
+  // First model call — Gemini + tools when available, otherwise legacy provider (no tools).
+  const useTools = Boolean(geminiKey())
   const firstResult = useTools
     ? await callGemini(messages, { maxTokens: 700, tools: COACH_TOOLS })
-    : { ok: true as const, content: "", toolCalls: undefined }
+    : await callModel(messages, { maxTokens: 700 })
 
   if (!firstResult.ok) {
     return NextResponse.json({ ok: false, unavailable: true }, { status: 200 })
@@ -120,6 +121,8 @@ async function executeToolCalls(
 async function executeSingleTool(name: string, args: Record<string, unknown>): Promise<unknown> {
   const goalId = typeof args.goalId === "string" ? args.goalId : ""
   if (!goalId) return { ok: false, error: "Missing goalId" }
+  const uuidCheck = z.string().uuid().safeParse(goalId)
+  if (!uuidCheck.success) return { ok: false, error: "Invalid goalId" }
 
   switch (name) {
     case "decompose_goal": {
@@ -143,14 +146,27 @@ async function executeSingleTool(name: string, args: Record<string, unknown>): P
     }
     case "create_journey": {
       const { createGoalJourneyAction } = await import("@/lib/goals/actions")
-      const titlesRaw = typeof args.titles === "string" ? args.titles : ""
-      const titles = titlesRaw
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean)
-      if (titles.length === 0) return { ok: false, error: "No phase titles provided" }
-      const created = await createGoalJourneyAction(goalId, { mode: "custom", titles })
-      return { ok: true, phasesCreated: created.created }
+      // Normalize titles: accept string[] (new contract) or comma-separated string (legacy fallback)
+      let titles: string[]
+      if (Array.isArray(args.titles)) {
+        titles = (args.titles as unknown[]).map((t) => String(t).trim()).filter(Boolean)
+      } else if (typeof args.titles === "string") {
+        titles = args.titles
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+      } else {
+        titles = []
+      }
+      // Validate via goalJourneySchema constraints (1-12 titles, each 1-120 chars) using Zod
+      const titlesCheck = z.array(z.string().trim().min(1).max(120)).min(1).max(12).safeParse(titles)
+      if (!titlesCheck.success) return { ok: false, error: "Invalid titles: provide 1-12 phase titles (each 1-120 chars)" }
+      try {
+        const created = await createGoalJourneyAction(goalId, { mode: "custom", titles: titlesCheck.data })
+        return { ok: true, phasesCreated: created.created }
+      } catch (e: unknown) {
+        return { ok: false, error: e instanceof Error ? e.message : "Could not create journey" }
+      }
     }
     default:
       return { ok: false, error: `Unknown tool: ${name}` }

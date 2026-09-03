@@ -49,7 +49,7 @@ export default async function DashboardPage() {
   const [data, profileRes, statSummaries, momentumSummary, topInsights, todaysJournal, journalStreak, nextAction] = await Promise.all([
     getDashboardData(supabase, user.id).catch(() => null),
     supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
-    getStatsOverview(supabase).catch(() => []),
+    getStatsOverview(supabase, user.id).catch(() => []),
     getMomentumSummary(supabase, user.id).catch(() => null),
     getQuickInsights(supabase, user.id).catch(() => []),
     getTodaysJournal(supabase, user.id).catch(() => null),

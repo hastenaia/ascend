@@ -29,14 +29,14 @@ export default async function StatsPage() {
 
   let stats: Awaited<ReturnType<typeof getStatsOverview>> = []
   try {
-    stats = await getStatsOverview(supabase)
+    stats = await getStatsOverview(supabase, user.id)
   } catch {}
 
   const historyBySlug: Record<string, StatHistoryEntry[]> = {}
   await Promise.all(
     STAT_SLUGS.map(async (slug) => {
       try {
-        historyBySlug[slug] = await getStatHistory(supabase, slug)
+        historyBySlug[slug] = await getStatHistory(supabase, user.id, slug)
       } catch {
         historyBySlug[slug] = []
       }

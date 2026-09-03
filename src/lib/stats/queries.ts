@@ -32,11 +32,11 @@ function startOfMonthIso(d = new Date()): string {
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString()
 }
 
-/** All 8 stats with real persisted values + monthly delta + weekly trend */
-export async function getStatsOverview(supabase: SupabaseClient): Promise<StatSummary[]> {
+/** All 8 stats with real persisted values + monthly delta + weekly trend — owner-scoped */
+export async function getStatsOverview(supabase: SupabaseClient, userId: string): Promise<StatSummary[]> {
   const [{ data: catalog }, { data: userStats }] = await Promise.all([
     supabase.from("stats").select("id, slug").in("slug", [...STAT_SLUGS]),
-    supabase.from("user_stats").select("stat_id, value"),
+    supabase.from("user_stats").select("stat_id, value").eq("user_id", userId),
   ])
   const rows = (catalog as { id: string; slug: StatSlug }[]) ?? []
   if (rows.length === 0) return []
@@ -50,6 +50,7 @@ export async function getStatsOverview(supabase: SupabaseClient): Promise<StatSu
   const { data: hist } = await supabase
     .from("stat_history")
     .select("stat_id, delta, created_at")
+    .eq("user_id", userId)
     .in("stat_id", rows.map((r) => r.id))
   const history = (hist as { stat_id: string; delta: number; created_at: string }[]) ?? []
 
@@ -86,12 +87,13 @@ export async function getStatsOverview(supabase: SupabaseClient): Promise<StatSu
   })
 }
 
-export async function getStatHistory(supabase: SupabaseClient, slug: StatSlug, limit = 25): Promise<StatHistoryEntry[]> {
+export async function getStatHistory(supabase: SupabaseClient, userId: string, slug: StatSlug, limit = 25): Promise<StatHistoryEntry[]> {
   const { data: cat } = await supabase.from("stats").select("id").eq("slug", slug).maybeSingle()
   if (!cat) return []
   const { data } = await supabase
     .from("stat_history")
     .select("id, delta, description, created_at")
+    .eq("user_id", userId)
     .eq("stat_id", (cat as { id: string }).id)
     .order("created_at", { ascending: false })
     .limit(limit)
@@ -105,10 +107,10 @@ export type SkillTreeData = {
   }[]
 }
 
-export async function getSkillTreeData(supabase: SupabaseClient): Promise<SkillTreeData> {
+export async function getSkillTreeData(supabase: SupabaseClient, userId: string): Promise<SkillTreeData> {
   const [{ data: skills }, { data: userSkills }] = await Promise.all([
     supabase.from("skills").select("id, slug, name, description, category, parent_id, sort_order, unlock_xp"),
-    supabase.from("user_skills").select("skill_id, xp"),
+    supabase.from("user_skills").select("skill_id, xp").eq("user_id", userId),
   ])
   const catalog = (skills as unknown as SkillCatalogRow[]) ?? []
   const xpMap = new Map<string, number>()

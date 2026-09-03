@@ -12,7 +12,7 @@ export interface GeminiFunctionDeclaration {
   description: string
   parameters: {
     type: "object"
-    properties: Record<string, { type: string; description?: string; enum?: string[] }>
+    properties: Record<string, { type: string; description?: string; enum?: string[]; items?: { type: string } }>
     required: string[]
   }
 }
@@ -68,10 +68,9 @@ export const COACH_TOOLS: GeminiTool[] = [
             goalId: { type: "string", description: "The unique goal ID from the GOAL INTELLIGENCE block" },
             goalTitle: { type: "string", description: "The goal title for context" },
             titles: {
-              type: "string",
-              description:
-                "Comma-separated phase titles (3-5 recommended). " +
-                'Example: "Foundations, Practice, Depth, Mastery"',
+              type: "array",
+              description: "Phase titles (3-5 recommended). Example: [\"Foundations\", \"Practice\", \"Depth\", \"Mastery\"]",
+              items: { type: "string" },
             },
           },
           required: ["goalId", "titles"],

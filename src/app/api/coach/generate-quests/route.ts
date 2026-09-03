@@ -4,6 +4,7 @@ import { callModel, extractJson, type ChatMessage } from "@/lib/coach/provider"
 import { buildSystemPrompt } from "@/lib/coach/prompt"
 import { gatherCoachContext } from "@/lib/coach/context"
 import { rateLimited } from "@/lib/coach/ratelimit"
+import { sanitizeForPrompt } from "@/lib/ai/context"
 
 export const runtime = "nodejs"
 
@@ -42,11 +43,13 @@ export async function POST(req: Request) {
 
   const ctx = await gatherCoachContext(supabase, user.id)
 
+  const safeFocus = focus ? sanitizeForPrompt(focus) || focus : ""
+
   const messages: ChatMessage[] = [
     buildSystemPrompt(ctx.text),
     {
       role: "user",
-      content: `Propose 3 to 5 realistic quests for the user right now${focus ? `, focused on: "${focus}"` : ""}.
+      content: `Propose 3 to 5 realistic quests for the user right now${safeFocus ? `, focused on: "${safeFocus}"` : ""}.
 
 Rules:
 - Ground them in their open milestones/phase objective.

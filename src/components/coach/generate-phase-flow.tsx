@@ -18,10 +18,19 @@ export function GeneratePhaseFlow({ goals }: { goals: { id: string; title: strin
   const [loading, setLoading] = React.useState(false)
   const [applying, setApplying] = React.useState(false)
   const [proposals, setProposals] = React.useState<ProposedPhase[] | null>(null)
+  const abortRef = React.useRef<AbortController | null>(null)
+
+  React.useEffect(() => {
+    return () => abortRef.current?.abort()
+  }, [])
 
   const disabled = goals.length === 0
 
   async function generate() {
+    if (loading) return
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     setLoading(true)
     setProposals(null)
     try {
@@ -32,14 +41,19 @@ export function GeneratePhaseFlow({ goals }: { goals: { id: string; title: strin
           goalTitle: goals.find((g) => g.id === goalId)?.title ?? "",
           notes,
         }),
+        signal: controller.signal,
       })
       const json = (await res.json()) as { ok?: boolean; phases?: ProposedPhase[] }
       if (json.ok && json.phases?.length) setProposals(json.phases)
       else toast.error(COACH_UNAVAILABLE_MESSAGE)
-    } catch {
+    } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === "AbortError") return
       toast.error(COACH_UNAVAILABLE_MESSAGE)
     } finally {
-      setLoading(false)
+      if (abortRef.current === controller) {
+        abortRef.current = null
+        setLoading(false)
+      }
     }
   }
 

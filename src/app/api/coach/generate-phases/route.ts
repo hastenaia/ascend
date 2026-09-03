@@ -4,6 +4,7 @@ import { callModel, extractJson, type ChatMessage } from "@/lib/coach/provider"
 import { buildSystemPrompt } from "@/lib/coach/prompt"
 import { gatherCoachContext } from "@/lib/coach/context"
 import { rateLimited } from "@/lib/coach/ratelimit"
+import { sanitizeForPrompt } from "@/lib/ai/context"
 
 export const runtime = "nodejs"
 
@@ -34,11 +35,15 @@ export async function POST(req: Request) {
 
   const ctx = await gatherCoachContext(supabase, user.id)
 
+  // Sanitize user-controlled strings so they remain data, not instructions
+  const safeTitle = sanitizeForPrompt(goalTitle) || goalTitle
+  const safeNotes = notes ? sanitizeForPrompt(notes) || notes : ""
+
   const messages: ChatMessage[] = [
     buildSystemPrompt(ctx.text),
     {
       role: "user",
-      content: `Design a personalized phase journey for this goal: "${goalTitle}"${notes ? `\nUser notes: ${notes}` : ""}
+      content: `Design a personalized phase journey for this goal: "${safeTitle}"${safeNotes ? `\nUser notes: ${safeNotes}` : ""}
 
 Requirements:
 - 3 to 5 phases, each a real progression step (foundations -> practice -> depth -> mastery style arc).

@@ -131,9 +131,9 @@ export async function getCompletedPhaseDetails(
   const latestEnd = done.reduce((max, p) => Math.max(max, new Date(p.completedAt ?? Date.now()).getTime()), 0)
 
   const [statHistRes, statsRes, skillLogRes, skillsRes] = await Promise.all([
-    supabase.from("stat_history").select("stat_id,delta,created_at").gte("created_at", new Date(earliestStart).toISOString()).lte("created_at", new Date(latestEnd + 86_400_000).toISOString()),
+    supabase.from("stat_history").select("stat_id,delta,created_at").eq("user_id", userId).gte("created_at", new Date(earliestStart).toISOString()).lte("created_at", new Date(latestEnd + 86_400_000).toISOString()),
     supabase.from("stats").select("id,name"),
-    supabase.from("skill_xp_log").select("skill_id,delta,created_at").gte("created_at", new Date(earliestStart).toISOString()).lte("created_at", new Date(latestEnd + 86_400_000).toISOString()),
+    supabase.from("skill_xp_log").select("skill_id,delta,created_at").eq("user_id", userId).gte("created_at", new Date(earliestStart).toISOString()).lte("created_at", new Date(latestEnd + 86_400_000).toISOString()),
     supabase.from("skills").select("id,name"),
   ])
 

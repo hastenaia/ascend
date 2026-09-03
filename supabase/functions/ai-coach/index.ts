@@ -2,12 +2,40 @@
 // Architecture: Ascend Frontend -> Supabase Edge Function ai-coach -> Gemini -> Ascend UI
 // Env: GEMINI_API_KEY (server-only, never exposed)
 // Model: gemini-3.6-flash via Interactions API
+// DEPRECATED: The authoritative Coach path is Next.js /api/coach/chat (tool-aware,
+// shared prompt/context/provider). This Edge Function is kept for backward
+// compatibility only and is NOT invoked by coach-chat.tsx. Remove after
+// verifying Next route handles all coach traffic in production.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 // --- CORS ---
+// Restrict to configured origins; fall back to * only in local dev without env.
+function getCorsHeaders(req: Request): Record<string, string> {
+  const allowed = (Deno.env.get("ALLOWED_ORIGIN") ?? Deno.env.get("NEXT_PUBLIC_SITE_URL") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const origin = req.headers.get("Origin") ?? "";
+  // In production, echo the Origin only if it is in the allow-list.
+  // In local dev (no ALLOWED_ORIGIN), allow * to keep `supabase functions serve` usable.
+  let allowOrigin = "*";
+  if (allowed.length > 0) {
+    allowOrigin = allowed.includes(origin) ? origin : allowed[0];
+  } else if (origin) {
+    // No allow-list configured but request has Origin — reflect it (dev) or keep "*"
+    // To avoid wildcard in production without config, default to first allowed or "*"
+    allowOrigin = "*";
+  }
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Vary": "Origin",
+  };
+}
 const corsHeaders: Record<string, string> = {
-  "Access-Control-Allow-Origin": "*", // Follow existing Ascend deployment; Next.js routes are same-origin. Edge Functions require explicit. Supabase recommends specific origin but current coach had no CORS needed; using * for simplicity and dashboard parity.
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
@@ -128,19 +156,20 @@ async function gatherContext(supabase: ReturnType<typeof createClient>, userId: 
 }
 
 Deno.serve(async (req) => {
+  const cors = getCorsHeaders(req);
   // CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: cors });
   }
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers: { ...cors, "Content-Type": "application/json" } });
   }
 
   // Auth: expect Supabase JWT in Authorization: Bearer <token>
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("NEXT_PUBLIC_SUPABASE_URL") ?? "";
   const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
   if (!supabaseUrl || !supabaseAnonKey) {
-    return new Response(JSON.stringify({ ok: false, unavailable: true, error: "not_configured" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ ok: false, unavailable: true, error: "not_configured" }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } });
   }
 
   // Create supabase client with user token
@@ -151,17 +180,17 @@ Deno.serve(async (req) => {
 
   const { data: { user }, error: authErr } = await supabase.auth.getUser();
   if (authErr || !user) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...cors, "Content-Type": "application/json" } });
   }
 
   let body: { message?: unknown; history?: unknown; context?: unknown };
   try {
     body = await req.json();
   } catch {
-    return new Response(JSON.stringify({ error: "bad_request" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: "bad_request" }), { status: 400, headers: { ...cors, "Content-Type": "application/json" } });
   }
   const message = typeof body.message === "string" ? body.message.trim().slice(0, 2000) : "";
-  if (!message) return new Response(JSON.stringify({ error: "bad_request" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  if (!message) return new Response(JSON.stringify({ error: "bad_request" }), { status: 400, headers: { ...cors, "Content-Type": "application/json" } });
 
   // Rate limit (in-memory per isolate - best-effort)
   // Simple: rely on DB history length; not implementing distributed limit here.
@@ -190,7 +219,7 @@ Deno.serve(async (req) => {
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
   if (!geminiKey) {
     // Preserve fallback: do not fabricate, return unavailable (frontend shows COACH_UNAVAILABLE_MESSAGE)
-    return new Response(JSON.stringify({ ok: false, unavailable: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ ok: false, unavailable: true }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } });
   }
 
   // Build Gemini request
@@ -262,12 +291,12 @@ ${contextText}
       console.error("[ai-coach] gemini upstream", geminiRes.status, txt);
       // Map common codes to safe messages
       if (geminiRes.status === 429) {
-        return new Response(JSON.stringify({ ok: false, unavailable: true, error: "rate_limited" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ ok: false, unavailable: true, error: "rate_limited" }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } });
       }
       if (geminiRes.status === 400 || geminiRes.status === 401 || geminiRes.status === 403) {
-        return new Response(JSON.stringify({ ok: false, unavailable: true, error: "not_configured" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ ok: false, unavailable: true, error: "not_configured" }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } });
       }
-      return new Response(JSON.stringify({ ok: false, unavailable: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ ok: false, unavailable: true }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } });
     }
 
     const json = await geminiRes.json() as {
@@ -316,21 +345,26 @@ ${contextText}
     if (!text && typeof json.text === "string") text = json.text.trim();
     if (!text) {
       console.error("[ai-coach] gemini empty output", JSON.stringify(json).slice(0, 800));
-      return new Response(JSON.stringify({ ok: false, unavailable: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ ok: false, unavailable: true }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } });
     }
 
-    // Persist assistant message
+    // Persist assistant message — use RPC when available (hardened history), fallback to direct insert
     try {
-      await supabase.from("coach_messages").insert({ user_id: user.id, role: "assistant", content: text.slice(0, 6000) });
-    } catch { /* ignore */ }
+      const { error: rpcErr } = await supabase.rpc("append_coach_assistant_message", { p_content: text.slice(0, 6000) });
+      if (rpcErr) throw rpcErr;
+    } catch {
+      try {
+        await supabase.from("coach_messages").insert({ user_id: user.id, role: "assistant", content: text.slice(0, 6000) });
+      } catch { /* ignore */ }
+    }
 
     // Preserve existing frontend contract: { ok:true, reply: string }
     // Also include { response: string } for Edge Function callers expecting that shape
     return new Response(JSON.stringify({ ok: true, reply: text, response: text }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...cors, "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error("[ai-coach] fetch failed", e instanceof Error ? e.message : e);
-    return new Response(JSON.stringify({ ok: false, unavailable: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ ok: false, unavailable: true }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } });
   }
 });
