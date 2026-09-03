@@ -14,10 +14,36 @@
 
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string }
 
-export type ModelCallOptions = { maxTokens?: number; temperature?: number }
+/** A tool call the model wants to execute. */
+export interface ToolCall {
+  id: string
+  name: string
+  args: Record<string, unknown>
+}
+
+/** A function response step to send back to the model. */
+export interface FunctionResponseStep {
+  type: "function_response"
+  id: string
+  name: string
+  response: Record<string, unknown>
+}
+
+export type ModelCallOptions = {
+  maxTokens?: number
+  temperature?: number
+  /** Gemini tool declarations (function_declarations). When present, the model may emit tool calls. */
+  tools?: unknown[]
+  /**
+   * Raw Interactions API input steps. When provided, these are sent directly
+   * instead of building input from `messages`. Used for tool-call follow-ups
+   * where the input includes function_call / function_response steps.
+   */
+  rawInput?: Array<Record<string, unknown>>
+}
 
 export type ModelResult =
-  | { ok: true; content: string }
+  | { ok: true; content: string; toolCalls?: ToolCall[] }
   | {
       ok: false
       unavailable: true
@@ -46,7 +72,7 @@ export async function callGemini(messages: ChatMessage[], opts: ModelCallOptions
   if (!key) return { ok: false, unavailable: true, reason: "no_key" }
   const systemMsg = messages.find((m) => m.role === "system")
   const systemInstruction = systemMsg?.content ?? ""
-  const input = messages
+  const input = opts.rawInput ?? messages
     .filter((m) => m.role !== "system")
     .map((m) => ({
       type: m.role === "assistant" ? "model_output" : "user_input",
@@ -56,18 +82,22 @@ export async function callGemini(messages: ChatMessage[], opts: ModelCallOptions
   const timer = setTimeout(() => controller.abort(), 30_000)
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/interactions`
+    const body: Record<string, unknown> = {
+      model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
+      input,
+      system_instruction: systemInstruction,
+      generation_config: {
+        max_output_tokens: opts.maxTokens ?? 700,
+        temperature: opts.temperature ?? 0.6,
+      },
+    }
+    if (opts.tools && opts.tools.length > 0) {
+      body.tools = opts.tools
+    }
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify({
-        model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
-        input,
-        system_instruction: systemInstruction,
-        generation_config: {
-          max_output_tokens: opts.maxTokens ?? 700,
-          temperature: opts.temperature ?? 0.6,
-        },
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     })
     if (!res.ok) {
@@ -85,12 +115,23 @@ export async function callGemini(messages: ChatMessage[], opts: ModelCallOptions
       return { ok: false, unavailable: true, reason: "upstream_error", detail: `HTTP ${res.status}: ${body.slice(0, 200)}` }
     }
     const json = (await res.json()) as {
-      steps?: { type?: string; content?: string | { type?: string; text?: string }[]; text?: string }[]
+      steps?: { type?: string; content?: string | { type?: string; text?: string }[]; text?: string; id?: string; name?: string; arguments?: Record<string, unknown> }[]
       output?: { content?: { type?: string; text?: string }[] }[]
       candidates?: { content?: { parts?: { text?: string }[] } }[]
       response?: string
       text?: string
     }
+
+    // Extract function_call steps (tool calls the model wants to execute).
+    const toolCalls: ToolCall[] = []
+    if (Array.isArray(json.steps)) {
+      for (const step of json.steps) {
+        if (step.type === "function_call" && step.id && step.name) {
+          toolCalls.push({ id: step.id, name: step.name, args: step.arguments ?? {} })
+        }
+      }
+    }
+
     let text = ""
     if (Array.isArray(json.steps) && json.steps.length > 0) {
       const modelSteps = json.steps.filter((s) => s.type === "model_output")
@@ -121,12 +162,17 @@ export async function callGemini(messages: ChatMessage[], opts: ModelCallOptions
     }
     if (!text && typeof json.response === "string") text = json.response.trim()
     if (!text && typeof json.text === "string") text = json.text.trim()
+    // When the model emitted tool calls, return them even if there's no text
+    // (the caller will execute the tools and send results back for a follow-up).
+    if (toolCalls.length > 0) {
+      return { ok: true, content: text, toolCalls }
+    }
     if (!text) {
       const keys = Object.keys(json).join(",")
       console.error("[coach][diag] gemini returned 200 but response had no parseable text; keys:", keys, "; input messages:", messages.length)
       return { ok: false, unavailable: true, reason: "upstream_error", detail: `HTTP 200 with no parseable text (keys: ${keys || "none"})` }
     }
-    return { ok: true, content: text }
+    return { ok: true, content: text, ...(toolCalls.length > 0 ? { toolCalls } : {}) }
   } catch (e) {
     console.error("[coach] gemini call failed", e instanceof Error ? e.message : e)
     return { ok: false, unavailable: true, reason: "upstream_error", detail: e instanceof Error ? e.message : String(e) }
@@ -199,4 +245,50 @@ export function extractJson<T>(raw: string): T | null {
   } catch {
     return null
   }
+}
+
+/**
+ * Build the Gemini Interactions API input for a tool-call follow-up turn.
+ *
+ * Takes the original messages (which produced tool calls), the tool calls
+ * themselves, and the results. Returns the full `input` array ready to send
+ * in a second request so the model can generate a user-friendly response.
+ */
+export function buildToolFollowUpInput(
+  messages: ChatMessage[],
+  toolCalls: ToolCall[],
+  results: Array<{ id: string; name: string; result: unknown }>,
+): Array<{ type: string; content?: { type: string; text: string }[]; id?: string; name?: string; arguments?: Record<string, unknown>; response?: Record<string, unknown> }> {
+  const input: Array<{ type: string; content?: { type: string; text: string }[]; id?: string; name?: string; arguments?: Record<string, unknown>; response?: Record<string, unknown> }> = []
+
+  // Replay the original messages (minus system) as input steps.
+  for (const m of messages) {
+    if (m.role === "system") continue
+    input.push({
+      type: m.role === "assistant" ? "model_output" : "user_input",
+      content: [{ type: "text", text: m.content }],
+    })
+  }
+
+  // Append the function_call steps the model produced.
+  for (const tc of toolCalls) {
+    input.push({
+      type: "function_call",
+      id: tc.id,
+      name: tc.name,
+      arguments: tc.args,
+    })
+  }
+
+  // Append the function_response steps with the execution results.
+  for (const r of results) {
+    input.push({
+      type: "function_response",
+      id: r.id,
+      name: r.name,
+      response: typeof r.result === "object" && r.result !== null ? (r.result as Record<string, unknown>) : { result: r.result },
+    })
+  }
+
+  return input
 }
