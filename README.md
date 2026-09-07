@@ -26,7 +26,17 @@ The real Ascend application requires a server (Next.js SSR, Supabase Auth, middl
 
 **Source:** `hastenaia/ascend` · **Branch:** `main` · **Framework:** `Next.js`
 
-`netlify.toml` is now minimal (`command="next build"` only — Netlify auto-detects Next.js 16 Runtime, no `publish`/`plugins` needed). **Actual live host verified is Vercel** `ascend-q3pvbcks0-tigididing.vercel.app` — Netlify is secondary/backup.
+`netlify.toml` is minimal (`command="next build"` only — Netlify auto-detects Next.js 16 Runtime, no `publish`/`plugins` needed). `vercel.json` pins `framework: nextjs` and `git.deploymentEnabled.main=true` so Vercel auto-deploys on `git push main` like Nimbus. **Actual live host verified is Vercel** `ascend-q3pvbcks0-tigididing.vercel.app` — Netlify is secondary/backup.
+
+**Why Vercel was manual before:** the Vercel project was not connected to `hastenaia/ascend` with Automatic Deployments enabled (Nimbus was). This repo now has `vercel.json` + CI, but you still need the dashboard toggle:
+
+**Fix in 30s (one-time):**
+1. Vercel → Project `ascend` → Settings → Git → `Connected Git Repository` = `hastenaia/ascend` (if empty, Connect), Production Branch = `main`.
+2. Settings → Git → **Automatic Deployments: Enabled** (Nimbus has this on).
+3. GitHub → Settings → Applications → Vercel → ensure `hastenaia/ascend` is in allowed repos.
+4. `git push origin main` → Deployments shows a new `Git` deployment (not `Manual`). No more Redeploy button.
+
+`.github/workflows/ci.yml` runs `npm ci` → `lint` → `tsc --noEmit` → `vitest` on every push/PR to `main` so broken builds never reach Vercel.
 
 **For Netlify (if you deploy there):**
 1. Netlify → Add new site → Import `hastenaia/ascend` → Build `next build`.
@@ -34,7 +44,7 @@ The real Ascend application requires a server (Next.js SSR, Supabase Auth, middl
 3. Supabase → Auth → URL Configuration: `Site URL: https://<netlify>.netlify.app`, Redirect: `https://<netlify>.netlify.app/auth/callback` + `http://localhost:3000/auth/callback`
 
 **For Vercel (currently live):**
-Same 2 env vars in Vercel → Settings → Environment Variables; Supabase Site URL: `https://ascend-q3pvbcks0-tigididing.vercel.app`, Redirect: `https://ascend-q3pvbcks0-tigididing.vercel.app/auth/callback` + `http://localhost:3000/auth/callback`.
+Same 2 env vars in Vercel → Settings → Environment Variables; Supabase Site URL: `https://ascend-q3pvbcks0-tigididing.vercel.app`, Redirect: `https://ascend-q3pvbcks0-tigididing.vercel.app/auth/callback` + `http://localhost:3000/auth/callback`. After the Git fix above, pushes auto-deploy — identical to Nimbus.
 
 ---
 

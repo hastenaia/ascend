@@ -65,10 +65,10 @@ export function CoachChat({ initialHistory }: { initialHistory: CoachMsg[] }) {
         if (res.status === 429) {
           let body: { error?: string; reason?: string; retryAfterSeconds?: number } | null = null
           try {
-            body = (await res.json()) as typeof body
+            body = (await res.json()) as { error?: string; reason?: string; retryAfterSeconds?: number }
           } catch {}
-          const retry = body?.retryAfterSeconds ? ` Try again in ${body.retryAfterSeconds}s.` : ""
-          return { ok: false, error: "rate_limited", reason: "rate_limited", retryAfterSeconds: body?.retryAfterSeconds } as unknown as { ok?: boolean; reply?: string; error?: string }
+          const retryAfterSeconds = body?.retryAfterSeconds
+          return { ok: false, error: "rate_limited", reason: "rate_limited", retryAfterSeconds } as { ok?: boolean; reply?: string; error?: string; reason?: string; retryAfterSeconds?: number }
         }
         return (await res.json()) as { ok?: boolean; reply?: string; error?: string; reason?: string; retryAfterSeconds?: number }
       } catch (e: unknown) {
