@@ -16,11 +16,14 @@ export const runtime = "nodejs"
 /**
  * POST /api/coach/chat
  * Body: { message: string }
- * Returns: { ok:true, reply } | { ok:false, unavailable:true }
+ * Returns: { ok:true, reply } | { ok:false, unavailable:true, reason, retryAfterSeconds? }
  *
  * Supports tool-calling: when the model wants to decompose, understand,
  * or create a journey for a goal, the server executes the action and
  * feeds the result back for a user-friendly response.
+ *
+ * Diagnostics: server logs reason/detail; client receives reason + retryAfter for rate_limited
+ * but detail is only exposed in development to avoid leaking internals.
  */
 export async function POST(req: Request) {
   const supabase = await createClient()
@@ -64,7 +67,19 @@ export async function POST(req: Request) {
     : await callModel(messages, { maxTokens: 700 })
 
   if (!firstResult.ok) {
-    return NextResponse.json({ ok: false, unavailable: true }, { status: 200 })
+    console.error("[coach/chat] gemini unavailable", firstResult.reason, firstResult.detail ?? "")
+    const devDetail = process.env.NODE_ENV !== "production" ? { detail: firstResult.detail } : {}
+    return NextResponse.json(
+      {
+        ok: false,
+        unavailable: true,
+        reason: firstResult.reason,
+        error: firstResult.reason,
+        ...(firstResult.retryAfterSeconds ? { retryAfterSeconds: firstResult.retryAfterSeconds } : {}),
+        ...devDetail,
+      },
+      { status: 200 },
+    )
   }
 
   // If the model emitted tool calls, execute them and get a follow-up response.
@@ -87,7 +102,8 @@ export async function POST(req: Request) {
 
   // If the model returned no text at all (no tools, no text), show unavailable.
   if (!finalReply) {
-    return NextResponse.json({ ok: false, unavailable: true }, { status: 200 })
+    console.error("[coach/chat] empty finalReply", { hadToolCalls: firstResult.toolCalls?.length ?? 0 })
+    return NextResponse.json({ ok: false, unavailable: true, reason: "upstream_error", error: "upstream_error" }, { status: 200 })
   }
 
   await appendMessage(supabase, user.id, "assistant", finalReply)

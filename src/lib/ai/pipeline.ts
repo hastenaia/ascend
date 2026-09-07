@@ -97,6 +97,7 @@ export async function runAIProposal<T>(req: RunnableAIProposalRequest<T>): Promi
 function mapUnavailable(result: ModelResult): AIProposalFailureReason {
   if (result.ok) return "unavailable"
   if (result.reason === "no_key") return "no_key"
+  if (result.reason === "rate_limited") return "rate_limited"
   if (result.reason === "upstream_error") return "upstream_error"
   return "upstream_error"
 }

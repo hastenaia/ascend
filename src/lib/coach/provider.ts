@@ -1,10 +1,10 @@
 /**
  * AI Coach provider — server-side only. NEVER import from client components.
  *
- * Prefers Google Gemini (GEMINI_API_KEY) via Interactions API.
+ * Prefers Google Gemini (GEMINI_API_KEY) via Interactions API (GA, June 2026).
  * Falls back to OpenAI-compatible gateway (AI_API_KEY / OPENAI_API_KEY) for legacy.
  *   GEMINI_API_KEY — preferred; without any key the coach is OFF
- *   GEMINI_MODEL   — default gemini-3.6-flash
+ *   GEMINI_MODEL   — default gemini-2.5-flash (also valid: gemini-3.6-flash, gemini-3.8-flash)
  *   AI_API_KEY / OPENAI_API_KEY — legacy fallback
  *
  * If no key is configured or the upstream call fails, callers receive
@@ -83,7 +83,7 @@ export async function callGemini(messages: ChatMessage[], opts: ModelCallOptions
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/interactions`
     const body: Record<string, unknown> = {
-      model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
       input,
       system_instruction: systemInstruction,
       generation_config: {
@@ -96,7 +96,11 @@ export async function callGemini(messages: ChatMessage[], opts: ModelCallOptions
     }
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": key,
+        "Api-Revision": "2026-05-20",
+      },
       body: JSON.stringify(body),
       signal: controller.signal,
     })
@@ -115,19 +119,40 @@ export async function callGemini(messages: ChatMessage[], opts: ModelCallOptions
       return { ok: false, unavailable: true, reason: "upstream_error", detail: `HTTP ${res.status}: ${body.slice(0, 200)}` }
     }
     const json = (await res.json()) as {
-      steps?: { type?: string; content?: string | { type?: string; text?: string }[]; text?: string; id?: string; name?: string; arguments?: Record<string, unknown> }[]
+      steps?: {
+        type?: string
+        content?: string | { type?: string; text?: string }[]
+        text?: string
+        id?: string
+        name?: string
+        arguments?: Record<string, unknown> | string
+        args?: Record<string, unknown>
+        call_id?: string
+      }[]
       output?: { content?: { type?: string; text?: string }[] }[]
       candidates?: { content?: { parts?: { text?: string }[] } }[]
       response?: string
       text?: string
+      output_text?: string
     }
 
     // Extract function_call steps (tool calls the model wants to execute).
     const toolCalls: ToolCall[] = []
     if (Array.isArray(json.steps)) {
       for (const step of json.steps) {
-        if (step.type === "function_call" && step.id && step.name) {
-          toolCalls.push({ id: step.id, name: step.name, args: step.arguments ?? {} })
+        if (step.type === "function_call" && (step.id || step.call_id) && step.name) {
+          let args: Record<string, unknown> = {}
+          const rawArgs: unknown = (step as { arguments?: unknown; args?: unknown }).arguments ?? (step as { args?: unknown }).args
+          if (typeof rawArgs === "string") {
+            try {
+              args = JSON.parse(rawArgs) as Record<string, unknown>
+            } catch {
+              args = {}
+            }
+          } else if (rawArgs && typeof rawArgs === "object") {
+            args = rawArgs as Record<string, unknown>
+          }
+          toolCalls.push({ id: (step.id ?? step.call_id) as string, name: step.name, args })
         }
       }
     }
@@ -153,6 +178,9 @@ export async function callGemini(messages: ChatMessage[], opts: ModelCallOptions
           .join("")
           .trim()
       }
+    }
+    if (!text && typeof (json as { output_text?: string }).output_text === "string") {
+      text = ((json as { output_text?: string }).output_text ?? "").trim()
     }
     if (!text && Array.isArray(json.output) && json.output.length > 0) {
       text = json.output.flatMap((o) => o.content ?? []).map((p) => (p as { text?: string }).text ?? "").join("").trim()
@@ -253,13 +281,16 @@ export function extractJson<T>(raw: string): T | null {
  * Takes the original messages (which produced tool calls), the tool calls
  * themselves, and the results. Returns the full `input` array ready to send
  * in a second request so the model can generate a user-friendly response.
+ *
+ * Stateless mode (store=false implicitly): we replay history as steps and
+ * provide function results as `function_result` steps per Interactions docs.
  */
 export function buildToolFollowUpInput(
   messages: ChatMessage[],
   toolCalls: ToolCall[],
   results: Array<{ id: string; name: string; result: unknown }>,
-): Array<{ type: string; content?: { type: string; text: string }[]; id?: string; name?: string; arguments?: Record<string, unknown>; response?: Record<string, unknown> }> {
-  const input: Array<{ type: string; content?: { type: string; text: string }[]; id?: string; name?: string; arguments?: Record<string, unknown>; response?: Record<string, unknown> }> = []
+): Array<Record<string, unknown>> {
+  const input: Array<Record<string, unknown>> = []
 
   // Replay the original messages (minus system) as input steps.
   for (const m of messages) {
@@ -275,18 +306,23 @@ export function buildToolFollowUpInput(
     input.push({
       type: "function_call",
       id: tc.id,
+      call_id: tc.id,
       name: tc.name,
       arguments: tc.args,
     })
   }
 
-  // Append the function_response steps with the execution results.
+  // Append the function_result steps with the execution results (Interactions uses function_result).
   for (const r of results) {
+    const payload = typeof r.result === "object" && r.result !== null ? r.result : { result: r.result }
     input.push({
-      type: "function_response",
+      type: "function_result",
+      call_id: r.id,
       id: r.id,
       name: r.name,
-      response: typeof r.result === "object" && r.result !== null ? (r.result as Record<string, unknown>) : { result: r.result },
+      result: [{ type: "text", text: JSON.stringify(payload) }],
+      // Also include response for backwards compat with any server that expects function_response
+      response: payload as Record<string, unknown>,
     })
   }
 

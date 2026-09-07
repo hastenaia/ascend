@@ -1,7 +1,7 @@
-// Supabase Edge Function: ai-coach -> Google Gemini 3.6 Flash (Interactions API)
+// Supabase Edge Function: ai-coach -> Google Gemini (Interactions API)
 // Architecture: Ascend Frontend -> Supabase Edge Function ai-coach -> Gemini -> Ascend UI
-// Env: GEMINI_API_KEY (server-only, never exposed)
-// Model: gemini-3.6-flash via Interactions API
+// Env: GEMINI_API_KEY (server-only, never exposed), GEMINI_MODEL (optional, default gemini-2.5-flash)
+// Model: gemini-2.5-flash via Interactions API (also valid: gemini-3.6-flash, gemini-3.8-flash)
 // DEPRECATED: The authoritative Coach path is Next.js /api/coach/chat (tool-aware,
 // shared prompt/context/provider). This Edge Function is kept for backward
 // compatibility only and is NOT invoked by coach-chat.tsx. Remove after
@@ -218,8 +218,9 @@ Deno.serve(async (req) => {
   // GEMINI_API_KEY (server-only)
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
   if (!geminiKey) {
+    console.error("[ai-coach] GEMINI_API_KEY missing");
     // Preserve fallback: do not fabricate, return unavailable (frontend shows COACH_UNAVAILABLE_MESSAGE)
-    return new Response(JSON.stringify({ ok: false, unavailable: true }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ ok: false, unavailable: true, reason: "no_key" }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } });
   }
 
   // Build Gemini request
@@ -272,17 +273,23 @@ ${contextText}
 
   const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/interactions`;
 
+  const geminiModel = Deno.env.get("GEMINI_MODEL") || "gemini-2.5-flash";
   try {
     const geminiRes = await fetch(geminiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-goog-api-key": geminiKey,
+        "Api-Revision": "2026-05-20",
       },
       body: JSON.stringify({
-        model: "gemini-3.6-flash",
+        model: geminiModel,
         input,
         system_instruction: systemInstruction,
+        generation_config: {
+          max_output_tokens: 700,
+          temperature: 0.6,
+        },
       }),
     });
 
@@ -303,6 +310,7 @@ ${contextText}
       // Interactions API steps-based: { steps: [{type, content:[{type,text}]}], ... } OR legacy fallbacks
       steps?: { type?: string; content?: string | { type?: string; text?: string }[]; text?: string }[];
       output?: { content?: { type?: string; text?: string }[]; role?: string }[];
+      output_text?: string;
       candidates?: { content?: { parts?: { text?: string }[] } }[];
       response?: string;
       text?: string;
@@ -331,6 +339,9 @@ ${contextText}
           .trim();
       }
     }
+    if (!text && typeof (json as { output_text?: string }).output_text === "string") {
+      text = ((json as { output_text?: string }).output_text ?? "").trim();
+    }
     if (!text && Array.isArray(json.output) && json.output.length > 0) {
       text = json.output
         .flatMap((o) => o.content ?? [])
@@ -344,8 +355,8 @@ ${contextText}
     if (!text && typeof json.response === "string") text = json.response.trim();
     if (!text && typeof json.text === "string") text = json.text.trim();
     if (!text) {
-      console.error("[ai-coach] gemini empty output", JSON.stringify(json).slice(0, 800));
-      return new Response(JSON.stringify({ ok: false, unavailable: true }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } });
+      console.error("[ai-coach] gemini empty output", JSON.stringify(json).slice(0, 1000), "model:", geminiModel);
+      return new Response(JSON.stringify({ ok: false, unavailable: true, reason: "upstream_error" }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } });
     }
 
     // Persist assistant message — use RPC when available (hardened history), fallback to direct insert

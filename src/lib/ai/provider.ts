@@ -29,7 +29,7 @@ const KIND_MODEL: Record<AIProposalKind, string | undefined> = {
 export function modelFor(kind: AIProposalKind): string {
   const env = process.env.GEMINI_MODEL
   if (env) return env
-  return KIND_MODEL[kind] ?? "gemini-3.6-flash"
+  return KIND_MODEL[kind] ?? "gemini-2.5-flash"
 }
 
 /**

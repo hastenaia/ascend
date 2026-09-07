@@ -17,68 +17,63 @@ export interface GeminiFunctionDeclaration {
   }
 }
 
-export interface GeminiTool {
-  function_declarations: GeminiFunctionDeclaration[]
-}
+/** Interactions API expects tools as flat array of function objects: {type:"function", name,...}. */
+export type GeminiTool = GeminiFunctionDeclaration
 
 export const COACH_TOOLS: GeminiTool[] = [
   {
-    function_declarations: [
-      {
-        type: "function",
-        name: "decompose_goal",
-        description:
-          "Generate a full personalized journey for a goal: phases with objectives, milestones, and quests. " +
-          "Use this when the user asks to decompose, plan, break down, or create a journey for a specific goal. " +
-          "The proposal is reviewed before anything is created.",
-        parameters: {
-          type: "object",
-          properties: {
-            goalId: { type: "string", description: "The unique goal ID from the GOAL INTELLIGENCE block" },
-            goalTitle: { type: "string", description: "The goal title for context" },
-          },
-          required: ["goalId"],
+    type: "function",
+    name: "decompose_goal",
+    description:
+      "Generate a full personalized journey for a goal: phases with objectives, milestones, and quests. " +
+      "Use this when the user asks to decompose, plan, break down, or create a journey for a specific goal. " +
+      "The proposal is reviewed before anything is created.",
+    parameters: {
+      type: "object",
+      properties: {
+        goalId: { type: "string", description: "The unique goal ID from the GOAL INTELLIGENCE block" },
+        goalTitle: { type: "string", description: "The goal title for context" },
+      },
+      required: ["goalId"],
+    },
+  },
+  {
+    type: "function",
+    name: "understand_goal",
+    description:
+      "Generate an AI synthesis of a goal's current state, trajectory, risks, opportunities, and open questions. " +
+      "Use this when the user asks to understand, analyze, or get insight into a specific goal.",
+    parameters: {
+      type: "object",
+      properties: {
+        goalId: { type: "string", description: "The unique goal ID from the GOAL INTELLIGENCE block" },
+        goalTitle: { type: "string", description: "The goal title for context" },
+      },
+      required: ["goalId"],
+    },
+  },
+  {
+    type: "function",
+    name: "create_journey",
+    description:
+      "Create a phase journey for a goal with custom phase titles. " +
+      "Use this when the user asks to create, set up, or start a journey for a goal. " +
+      "The coach should suggest 3-5 meaningful phase titles based on the goal.",
+    parameters: {
+      type: "object",
+      properties: {
+        goalId: { type: "string", description: "The unique goal ID from the GOAL INTELLIGENCE block" },
+        goalTitle: { type: "string", description: "The goal title for context" },
+        titles: {
+          type: "array",
+          description: "Phase titles (3-5 recommended). Example: [\"Foundations\", \"Practice\", \"Depth\", \"Mastery\"]",
+          items: { type: "string" },
         },
       },
-      {
-        type: "function",
-        name: "understand_goal",
-        description:
-          "Generate an AI synthesis of a goal's current state, trajectory, risks, opportunities, and open questions. " +
-          "Use this when the user asks to understand, analyze, or get insight into a specific goal.",
-        parameters: {
-          type: "object",
-          properties: {
-            goalId: { type: "string", description: "The unique goal ID from the GOAL INTELLIGENCE block" },
-            goalTitle: { type: "string", description: "The goal title for context" },
-          },
-          required: ["goalId"],
-        },
-      },
-      {
-        type: "function",
-        name: "create_journey",
-        description:
-          "Create a phase journey for a goal with custom phase titles. " +
-          "Use this when the user asks to create, set up, or start a journey for a goal. " +
-          "The coach should suggest 3-5 meaningful phase titles based on the goal.",
-        parameters: {
-          type: "object",
-          properties: {
-            goalId: { type: "string", description: "The unique goal ID from the GOAL INTELLIGENCE block" },
-            goalTitle: { type: "string", description: "The goal title for context" },
-            titles: {
-              type: "array",
-              description: "Phase titles (3-5 recommended). Example: [\"Foundations\", \"Practice\", \"Depth\", \"Mastery\"]",
-              items: { type: "string" },
-            },
-          },
-          required: ["goalId", "titles"],
-        },
-      },
-    ],
+      required: ["goalId", "titles"],
+    },
   },
 ]
 
 /** Names of all tools the coach can invoke. */
-export const COACH_TOOL_NAMES = COACH_TOOLS[0].function_declarations.map((f) => f.name)
+export const COACH_TOOL_NAMES = COACH_TOOLS.map((f) => f.name)

@@ -53,7 +53,7 @@ export function CoachChat({ initialHistory }: { initialHistory: CoachMsg[] }) {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
-    const tryNext = async (): Promise<{ ok?: boolean; reply?: string; error?: string } | null> => {
+    const tryNext = async (): Promise<{ ok?: boolean; reply?: string; error?: string; reason?: string; retryAfterSeconds?: number } | null> => {
       try {
         const res = await fetch("/api/coach/chat", {
           method: "POST",
@@ -61,7 +61,16 @@ export function CoachChat({ initialHistory }: { initialHistory: CoachMsg[] }) {
           body: JSON.stringify({ message }),
           signal: controller.signal,
         })
-        return (await res.json()) as { ok?: boolean; reply?: string; error?: string }
+        // 429 is surfaced as rate-limited (may be JSON or empty)
+        if (res.status === 429) {
+          let body: { error?: string; reason?: string; retryAfterSeconds?: number } | null = null
+          try {
+            body = (await res.json()) as typeof body
+          } catch {}
+          const retry = body?.retryAfterSeconds ? ` Try again in ${body.retryAfterSeconds}s.` : ""
+          return { ok: false, error: "rate_limited", reason: "rate_limited", retryAfterSeconds: body?.retryAfterSeconds } as unknown as { ok?: boolean; reply?: string; error?: string }
+        }
+        return (await res.json()) as { ok?: boolean; reply?: string; error?: string; reason?: string; retryAfterSeconds?: number }
       } catch (e: unknown) {
         if (e instanceof DOMException && e.name === "AbortError") return null
         return null
@@ -79,7 +88,7 @@ export function CoachChat({ initialHistory }: { initialHistory: CoachMsg[] }) {
         })
         return
       }
-      const anyJson = json as { ok?: boolean; reply?: string; response?: string; error?: string }
+      const anyJson = json as { ok?: boolean; reply?: string; response?: string; error?: string; reason?: string; retryAfterSeconds?: number }
       const reply = anyJson.reply ?? anyJson.response
       setMessages((m) => {
         const next = [...m]
@@ -88,7 +97,9 @@ export function CoachChat({ initialHistory }: { initialHistory: CoachMsg[] }) {
           if (placeholder?.role === "assistant") next[next.length - 1] = { role: "assistant", content: reply }
           else next.push({ role: "assistant", content: reply })
         } else {
-          const note = anyJson.error === "rate_limited" ? "Too many requests — take a short break." : COACH_UNAVAILABLE_MESSAGE
+          const isRateLimited = anyJson.error === "rate_limited" || anyJson.reason === "rate_limited"
+          const retryNote = anyJson.retryAfterSeconds ? ` Try again in ${anyJson.retryAfterSeconds}s.` : ""
+          const note = isRateLimited ? `Too many requests — take a short break.${retryNote}` : COACH_UNAVAILABLE_MESSAGE
           if (placeholder?.role === "assistant") next[next.length - 1] = { role: "assistant", content: note, unavailableFlag: true } as CoachMsg & { unavailableFlag?: boolean }
           else next.push({ role: "assistant", content: note })
         }
